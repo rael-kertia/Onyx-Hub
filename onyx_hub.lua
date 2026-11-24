@@ -120,7 +120,6 @@ connect(minimizeButton.Activated, function()
             end
         end
         frame.Size = UDim2.new(onyxExpandedSize.X.Scale, onyxExpandedSize.X.Offset, 0, header.Size.Y.Offset)
-        minimizeButton.Text = "+"
     else
         frame.Size = onyxExpandedSize
         for _, child in ipairs(frame:GetChildren()) do
@@ -128,7 +127,6 @@ connect(minimizeButton.Activated, function()
                 pcall(function() child.Visible = true end)
             end
         end
-        minimizeButton.Text = "-"
     end
 end)]],
     "MINIMIZE COLLAPSE HEADER"
@@ -461,8 +459,8 @@ end)
 
 source = source .. [====[
 do
-    -- Disable the legacy immediate-exit X; use the confirmation dialog below.
-    if exitButton then exitButton.Visible = false end
+    -- Gunakan satu tombol X bawaan; tombol X tambahan di header disembunyikan.
+    if exitButton then exitButton.Visible = true end
 
     -- Core restore sudah membuat Header, Title, dan tombol minimize.
     assert(header and header.Parent == frame, "HEADER CORE TIDAK DITEMUKAN")
@@ -713,6 +711,7 @@ do
     closeButton.Font = Enum.Font.GothamBold
     closeButton.ZIndex = 25
     closeButton.Parent = header
+    closeButton.Visible = false
     Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 7)
 
     local shade = Instance.new("Frame")
@@ -787,16 +786,6 @@ do
         shade.Visible = false
     end)
 
-    connect(minimizeChoice.Activated, function()
-        shade.Visible = false
-        frame.Visible = false
-        miniButton.Visible = true
-    end)
-
-    connect(minimizeButton.Activated, function()
-        frame.Visible = false
-        miniButton.Visible = true
-    end)
 
     connect(stopChoice.Activated, function()
         -- Invalidate both feature sessions first so every worker exits.

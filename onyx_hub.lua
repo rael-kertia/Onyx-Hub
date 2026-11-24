@@ -62,6 +62,9 @@ local marker = "
 -- ==========================================
 source = source .. [====[
 do
+    -- Disable the legacy immediate-exit X; use the confirmation dialog below.
+    if exitButton then exitButton.Visible = false end
+
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
     local panelHeight = math.min(340, math.max(300, viewport.Y - 150))

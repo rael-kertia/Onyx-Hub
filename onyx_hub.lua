@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix11-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix12-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -46,7 +46,7 @@ end
 
 source = onyxReplaceLineStrict(
     source,
-    'title.Text = "RAEL\'S TRICKS"',
+    'title.Text = "RAEL\'S TRICKS V18.2"',
     'title.Text = "ONYX HUB"',
     "TITLE TEXT"
 )
@@ -58,7 +58,7 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
-    'minimizeButton.Text = "\020"',
+    'minimizeButton.Text = "\024"',
     'minimizeButton.Text = "-"',
     "MINIMIZE GLYPH"
 )
@@ -816,7 +816,7 @@ local farmOK, farmError = pcall(function()
         scroll = scroll
     }
 
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-farm-visible-fix11-20261125"
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-farm-visible-fix12-20261125"
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
@@ -844,7 +844,10 @@ local function updateUI()
     paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
 end
 ]=]
-    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
+    local first = assert(farmSource:find("-- NEW GUI: three feature toggles only", 1, true), "BLOK GUI FARM ASLI TIDAK DITEMUKAN")
+    local last = assert(farmSource:find("-- DROPPING SCANNER", first, true), "AKHIR BLOK GUI FARM TIDAK DITEMUKAN")
+    assert(last > first, "RENTANG BLOK GUI FARM TIDAK VALID")
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\\n" .. farmSource:sub(last)
     local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()

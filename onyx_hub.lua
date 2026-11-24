@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix2-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -767,8 +767,13 @@ local farmOK, farmError = pcall(function()
 
     scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 14)
 
-    -- Buang panel, minimize, X, dan mini launcher Farm. Worker tetap aktif.
-    farmGui:Destroy()
+    -- Hapus seluruh tampilan Farm terpisah, tetapi pertahankan ScreenGui
+    -- sebagai penanda hidup bagi loop worker yang memeriksa gui.Parent.
+    for _, child in ipairs(farmGui:GetChildren()) do
+        if child:IsA("GuiObject") then
+            child:Destroy()
+        end
+    end
 
     local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")

@@ -773,12 +773,26 @@ local farmOK, farmError = pcall(function()
     assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
     local scroll = mainGui:FindFirstChild("FeatureScroll", true)
     assert(scroll and scroll:IsA("ScrollingFrame"), "FEATURESCROLL ONYX TIDAK DITEMUKAN")
-    local oldFarm = scroll:FindFirstChild("FarmSectionHeader")
-    if oldFarm then oldFarm:Destroy() end
-    for _, name in ipairs({"AutoFarm", "AutoFeed", "AutoConvert"}) do
-        local old = scroll:FindFirstChild(name)
-        if old then old:Destroy() end
+    -- Bersihkan semua sisa UI Farm versi lama, termasuk yang tersarang
+    -- di dalam card/frame; bukan hanya anak langsung FeatureScroll.
+    for _, stale in ipairs(scroll:GetDescendants()) do
+        if stale.Name == "FarmSectionHeader"
+        or stale.Name == "AutoFarm"
+        or stale.Name == "AutoFeed"
+        or stale.Name == "AutoConvert" then
+            stale:Destroy()
+        elseif stale:IsA("TextButton") then
+            local label = (stale.Text or ""):upper():gsub("%s+", " ")
+            if label:match("^AUTO FARM")
+            or label:match("^AUTO FEED")
+            or label:match("^AUTO CONVERT") then
+                stale:Destroy()
+            end
+        end
     end
+    -- Hapus juga GUI Farm terpisah yang mungkin tertinggal dari versi sebelumnya.
+    local staleFarmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
+    if staleFarmGui then staleFarmGui:Destroy() end
     for _, child in ipairs(scroll:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
         and child.Name ~= "FeatureSectionLabel" and child.Position.Y.Offset >= 116 then

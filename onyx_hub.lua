@@ -821,28 +821,30 @@ local farmOK, farmError = pcall(function()
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
 
-    -- Farm engine reuses controls created independently in the ONYX GUI.
-    local gui = playerGui:WaitForChild("RaelsTricksV18", 15)
-    assert(gui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
-    local panel = gui:FindFirstChild("FeatureScroll", true)
-    assert(panel and panel:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
-    local farmUI = getgenv().ONYX_FARM_UI
-    assert(type(farmUI) == "table", "KONTROL FARM ONYX BELUM DIBUAT")
-    local farmButton = farmUI.AutoFarm
-    local feedButton = farmUI.AutoFeed
-    local convertButton = farmUI.AutoConvert
-    assert(farmButton and feedButton and convertButton, "TOMBOL FARM ONYX TIDAK LENGKAP")
-    local function setStatus(message) end
-    local function paint(button, label, enabled, onColor, offColor)
-        button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
-        button.BackgroundColor3 = enabled and onColor or offColor
-    end
-    local function updateUI()
-        paint(farmButton, "AUTO FARM", autoFarm, Color3.fromRGB(32,145,94), Color3.fromRGB(34,94,75))
-        paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
-        paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
-    end
-    -- gui now points to ONYX itself, so workers end with ONYX and no second GUI exists.
+    local integratedUI = [=[
+-- ONYX EMBEDDED FARM ENGINE UI BINDINGS
+local gui = playerGui:WaitForChild("RaelsTricksV18", 15)
+assert(gui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
+local panel = gui:FindFirstChild("FeatureScroll", true)
+assert(panel and panel:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
+local farmUI = getgenv().ONYX_FARM_UI
+assert(type(farmUI) == "table", "KONTROL FARM ONYX BELUM DIBUAT")
+local farmButton = farmUI.AutoFarm
+local feedButton = farmUI.AutoFeed
+local convertButton = farmUI.AutoConvert
+assert(farmButton and feedButton and convertButton, "TOMBOL FARM ONYX TIDAK LENGKAP")
+local function setStatus(message) end
+local function paint(button, label, enabled, onColor, offColor)
+    button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
+    button.BackgroundColor3 = enabled and onColor or offColor
+end
+local function updateUI()
+    paint(farmButton, "AUTO FARM", autoFarm, Color3.fromRGB(32,145,94), Color3.fromRGB(34,94,75))
+    paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
+    paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
+end
+]=]
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
     local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()

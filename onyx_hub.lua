@@ -101,19 +101,8 @@ source = onyxReplaceLineStrict(
 source = onyxReplaceLineStrict(
     source,
     'miniButton.Parent = gui',
-    [[local onyxRestoreGui = Instance.new("ScreenGui")
-onyxRestoreGui.Name = "OnyxRestoreLauncher"
-onyxRestoreGui.ResetOnSpawn = false
-onyxRestoreGui.DisplayOrder = 10001
-onyxRestoreGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-onyxRestoreGui.Parent = playerGui
-miniButton.Parent = onyxRestoreGui
-gui.Destroying:Connect(function()
-    if onyxRestoreGui and onyxRestoreGui.Parent then
-        onyxRestoreGui:Destroy()
-    end
-end)]],
-    "MINI BUTTON SCREEN GUI TERPISAH"
+    'miniButton.Parent = gui',
+    "KEEP LEGACY MINI IN MAIN GUI"
 )
 source = onyxReplaceLineStrict(
     source,

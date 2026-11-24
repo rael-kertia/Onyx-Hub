@@ -101,7 +101,7 @@ source = onyxReplaceLineStrict(
 source = onyxReplaceLineStrict(
     source,
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
-    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = false end)',
+    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
     "HIDE LEGACY MINI"
 )
 

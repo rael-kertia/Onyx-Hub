@@ -1089,6 +1089,38 @@ local farmOK, farmError = pcall(function()
 
     -- The hidden ScreenGui keeps the original worker lifetime valid.
     farmGui.Enabled = false
+
+    local rail = mainGui:FindFirstChild("OnyxIconRail")
+    if rail then
+        local function makeShortcut(name, glyph, y)
+            local button = Instance.new("TextButton")
+            button.Name = name
+            button.Size = UDim2.fromOffset(34, 38)
+            button.Position = UDim2.fromOffset(6, y)
+            button.BackgroundColor3 = Color3.fromRGB(22, 42, 55)
+            button.BorderSizePixel = 0
+            button.Text = glyph
+            button.TextColor3 = Color3.fromRGB(105, 235, 205)
+            button.TextSize = 17
+            button.Font = Enum.Font.GothamBold
+            button.ZIndex = 41
+            button.Parent = rail
+            Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+            return button
+        end
+
+        local homeShortcut = makeShortcut("HomeShortcut", "⌂", 112)
+        local farmShortcut = makeShortcut("FarmShortcut", "♧", 158)
+
+        homeShortcut.Activated:Connect(function()
+            frame.Visible = true
+            scroll.CanvasPosition = Vector2.new(0, 0)
+        end)
+        farmShortcut.Activated:Connect(function()
+            frame.Visible = true
+            scroll.CanvasPosition = Vector2.new(0, farmPanel.Position.Y.Offset)
+        end)
+    end
 end)
 
 if not farmOK then

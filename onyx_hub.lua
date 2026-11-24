@@ -863,6 +863,32 @@ local farmOK, farmError = pcall(function()
     local oldMini = farmGui:FindFirstChild("RaelFarmMini")
     if oldMini then oldMini.Visible = false end
 
+    -- ONYX FARM CARD: visual consistency plus a working hide/reopen control.
+    farmPanel.BackgroundColor3 = Color3.fromRGB(13, 24, 38)
+    farmPanel.BorderSizePixel = 0
+    local farmStroke = farmPanel:FindFirstChildOfClass("UIStroke")
+    if farmStroke then
+        farmStroke.Color = Color3.fromRGB(52, 91, 112)
+        farmStroke.Thickness = 1.2
+    end
+    local farmClose = Instance.new("TextButton")
+    farmClose.Name = "OnyxFarmHide"
+    farmClose.Size = UDim2.fromOffset(24, 22)
+    farmClose.Position = UDim2.new(1, -8, 0, 7)
+    farmClose.AnchorPoint = Vector2.new(1, 0)
+    farmClose.BackgroundColor3 = Color3.fromRGB(115, 42, 52)
+    farmClose.BorderSizePixel = 0
+    farmClose.Text = "×"
+    farmClose.TextColor3 = Color3.new(1, 1, 1)
+    farmClose.TextSize = 16
+    farmClose.Font = Enum.Font.GothamBold
+    farmClose.ZIndex = 8
+    farmClose.Parent = farmPanel
+    Instance.new("UICorner", farmClose).CornerRadius = UDim.new(0, 6)
+    farmClose.Activated:Connect(function()
+        farmPanel.Visible = false
+    end)
+
     -- The hidden ScreenGui keeps the original worker lifetime valid.
     farmGui.Enabled = false
 

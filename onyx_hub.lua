@@ -1,42 +1,12 @@
 -- ONYX HUB - CORE LOADER
--- Bootstrap diagnostik: tampilkan status di layar, bukan console Delta.
-
-local Players = game:GetService("Players")
-local localPlayer = Players.LocalPlayer
-local playerGui = localPlayer:WaitForChild("PlayerGui")
-
-local oldDiagnostic = playerGui:FindFirstChild("OnyxLoaderDiagnostic")
-if oldDiagnostic then oldDiagnostic:Destroy() end
-
-local diagnosticGui = Instance.new("ScreenGui")
-diagnosticGui.Name = "OnyxLoaderDiagnostic"
-diagnosticGui.ResetOnSpawn = false
-diagnosticGui.DisplayOrder = 10000
-diagnosticGui.Parent = playerGui
-
-local diagnosticLabel = Instance.new("TextLabel")
-diagnosticLabel.Size = UDim2.fromOffset(310, 42)
-diagnosticLabel.Position = UDim2.new(0.5, -155, 0, 18)
-diagnosticLabel.BackgroundColor3 = Color3.fromRGB(30, 30, 36)
-diagnosticLabel.TextColor3 = Color3.new(1, 1, 1)
-diagnosticLabel.TextSize = 12
-diagnosticLabel.Font = Enum.Font.GothamBold
-diagnosticLabel.TextWrapped = true
-diagnosticLabel.Text = "ONYX HUB LOADER: MEMULAI"
-diagnosticLabel.Parent = diagnosticGui
-Instance.new("UICorner", diagnosticLabel).CornerRadius = UDim.new(0, 8)
-
-local function diagnosticStatus(message, failed)
-    diagnosticLabel.Text = "ONYX HUB LOADER: " .. tostring(message)
-    diagnosticLabel.BackgroundColor3 = failed
-        and Color3.fromRGB(150, 35, 35)
-        or Color3.fromRGB(30, 90, 65)
-end
+-- Loader diagnostics are intentionally silent; no status UI is shown.
+local function diagnosticStatus(message, failed) end
+local diagnosticGui = nil
 
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=4a68b6adeacbfd7bc8e6b7c8679669782c870a72"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-bubble-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -95,7 +65,7 @@ source = onyxReplaceLineStrict(
 source = onyxReplaceLineStrict(
     source,
     'miniButton.Text = "RT"',
-    'miniButton.Text = "O"',
+    'miniButton.Text = "ONYX"',
     "MINI BRAND"
 )
 source = onyxReplaceLineStrict(
@@ -106,49 +76,29 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
-    'miniButton.Text = "O"',
-    'miniButton.Text = ""',
-    "REMOVE MINI O ICON"
+    'miniButton.Text = "ONYX"',
+    'miniButton.Text = "ONYX"',
+    "KEEP ONYX MINI LABEL"
 )
 source = onyxReplaceLineStrict(
     source,
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
-    [[local onyxMinimized = false
-local onyxExpandedSize = frame.Size
-local onyxChildVisibility = {}
+    [[miniButton.Size = UDim2.fromOffset(58, 58)
+miniButton.Text = "ONYX"
+miniButton.TextSize = 10
+miniButton.Font = Enum.Font.GothamBlack
+miniButton.BackgroundColor3 = Color3.fromRGB(13, 148, 136)
 miniButton.Visible = false
+Instance.new("UICorner", miniButton).CornerRadius = UDim.new(1, 0)
 connect(minimizeButton.Activated, function()
-    if not onyxMinimized then
-        onyxExpandedSize = frame.Size
-        table.clear(onyxChildVisibility)
-        for _, child in ipairs(frame:GetChildren()) do
-            if child:IsA("GuiObject") and child ~= header then
-                onyxChildVisibility[child] = child.Visible
-                child.Visible = false
-            end
-        end
-        frame.Size = UDim2.new(
-            onyxExpandedSize.X.Scale,
-            onyxExpandedSize.X.Offset,
-            0,
-            math.max(header.AbsoluteSize.Y, header.Size.Y.Offset)
-        )
-        onyxMinimized = true
-    else
-        frame.Size = onyxExpandedSize
-        for child, wasVisible in pairs(onyxChildVisibility) do
-            if child and child.Parent == frame then
-                child.Visible = wasVisible
-            end
-        end
-        table.clear(onyxChildVisibility)
-        onyxMinimized = false
-    end
+    frame.Visible = false
+    miniButton.Visible = true
 end)
 connect(miniButton.Activated, function()
     miniButton.Visible = false
+    frame.Visible = true
 end)]],
-    "MINIMIZE COLLAPSE HEADER"
+    "MINIMIZE TO ONYX BUBBLE"
 )
 
 assert(source:find('header.Name = "Header"', 1, true),
@@ -437,51 +387,15 @@ paintJamButton()
 
 ]====]
 
-source = source .. [=[
--- EXIT BUTTON UNTUK MAIN GUI: hentikan seluruh fitur V18 + Homework + Jam Ajaib.
-local exitButton = Instance.new("TextButton")
-exitButton.Name = "ExitButton"
-exitButton.Size = UDim2.fromOffset(25, 19)
-exitButton.Position = UDim2.new(1, -58, 0, 1)
-exitButton.BackgroundColor3 = Color3.fromRGB(155, 38, 38)
-exitButton.BorderSizePixel = 0
-exitButton.Text = "X"
-exitButton.TextColor3 = Color3.new(1, 1, 1)
-exitButton.TextSize = 12
-exitButton.Font = Enum.Font.GothamBold
-exitButton.ZIndex = 20
-exitButton.Active = true
-exitButton.AutoButtonColor = true
-exitButton.Parent = frame
-Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 5)
+-- No second exit button: keep the single core header close control.
 
-connect(exitButton.Activated, function()
-    if not alive() then return end
-    enabled = false
-    autoFarm = false
-    homeworkEnabled = false
-    jamAutoEnabled = false
-    env.RaelV18Running = false
-    env.RFC_Running = false
-
-    for _, connection in ipairs(env.RaelV18Connections or {}) do
-        pcall(function() connection:Disconnect() end)
-    end
-    for _, object in ipairs(env.RaelV18Objects or {}) do
-        pcall(function() object:Destroy() end)
-    end
-    env.RaelV18Connections = {}
-    env.RaelV18Objects = {}
-    gui:Destroy()
-end)
-
-]=]
 
 source = source .. [====[
+-- Status remains internal only; remove the visible status panel.
+if statusPanel and statusPanel.Parent then statusPanel:Destroy() end
+local function setStatus(msg) end
 do
-    -- Gunakan satu tombol X bawaan; tombol X tambahan di header disembunyikan.
-    if exitButton then exitButton.Visible = true end
-
+    -- Keep the core header controls; no extra X button is created.
     -- Core restore sudah membuat Header, Title, dan tombol minimize.
     assert(header and header.Parent == frame, "HEADER CORE TIDAK DITEMUKAN")
 
@@ -771,7 +685,7 @@ chunk()
 -- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
 diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
 local farmOK, farmError = pcall(function()
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=4a68b6adeacbfd7bc8e6b7c8679669782c870a72"
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-bubble-20261125"
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")

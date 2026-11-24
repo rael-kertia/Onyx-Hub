@@ -867,7 +867,10 @@ end
         end)
         farmShortcut.Activated:Connect(function()
             mainFrame.Visible = true
-            scroll.CanvasPosition = Vector2.new(0, farmSectionY)
+            local farmHeader = scroll:FindFirstChild("FarmSectionHeader")
+            if farmHeader then
+                scroll.CanvasPosition = Vector2.new(0, farmHeader.Position.Y.Offset)
+            end
         end)
     end
 end)

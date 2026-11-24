@@ -88,7 +88,7 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
-    'minimizeButton.Text = "\u0014"',
+    'minimizeButton.Text = "\020"',
     'minimizeButton.Text = "-"',
     "MINIMIZE GLYPH"
 )

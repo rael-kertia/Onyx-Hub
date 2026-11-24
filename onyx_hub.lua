@@ -118,8 +118,31 @@ end)]],
 source = onyxReplaceLineStrict(
     source,
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
-    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
-    "HIDE LEGACY MINI"
+    [[local onyxMinimized = false
+local onyxExpandedSize = frame.Size
+miniButton.Visible = false
+connect(minimizeButton.Activated, function()
+    onyxMinimized = not onyxMinimized
+    if onyxMinimized then
+        onyxExpandedSize = frame.Size
+        for _, child in ipairs(frame:GetChildren()) do
+            if child ~= header then
+                pcall(function() child.Visible = false end)
+            end
+        end
+        frame.Size = UDim2.new(onyxExpandedSize.X.Scale, onyxExpandedSize.X.Offset, 0, header.Size.Y.Offset)
+        minimizeButton.Text = "+"
+    else
+        frame.Size = onyxExpandedSize
+        for _, child in ipairs(frame:GetChildren()) do
+            if child ~= header then
+                pcall(function() child.Visible = true end)
+            end
+        end
+        minimizeButton.Text = "-"
+    end
+end)]],
+    "MINIMIZE COLLAPSE HEADER"
 )
 
 assert(source:find('header.Name = "Header"', 1, true),

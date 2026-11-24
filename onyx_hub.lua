@@ -766,6 +766,26 @@ local panel = gui:FindFirstChild("FeatureScroll", true)
 assert(panel and panel:IsA("ScrollingFrame"), "ONYX FEATURESCROLL TIDAK DITEMUKAN")
 
 local function setStatus(message) end
+
+-- Letakkan Farm di bagian atas agar AUTO FARM langsung terlihat,
+-- bukan terselip jauh di bawah daftar fitur.
+local fixedTop = 116
+for _, child in ipairs(panel:GetChildren()) do
+    if child:IsA("GuiObject")
+    and child.Name ~= "OnyxDashboardHero"
+    and child.Name ~= "FeatureSectionLabel"
+    and child.Name ~= "FarmSectionHeader"
+    and child.Name ~= "AutoFarm"
+    and child.Name ~= "AutoFeed"
+    and child.Name ~= "AutoConvert"
+    and child.Position.Y.Offset >= fixedTop then
+        child.Position = UDim2.new(
+            child.Position.X.Scale, child.Position.X.Offset,
+            child.Position.Y.Scale, child.Position.Y.Offset + 160
+        )
+    end
+end
+
 local function makeToggle(name, label, y, color)
     local b = Instance.new("TextButton")
     b.Name = name
@@ -776,7 +796,10 @@ local function makeToggle(name, label, y, color)
     b.Text = label .. "  [OFF]"
     b.TextSize = 11
     b.Font = Enum.Font.GothamBold
-    b.ZIndex = 8
+    b.ZIndex = 12
+    b.Visible = true
+    b.Active = true
+    b.AutoButtonColor = true
     b.Parent = panel
     Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
     local stroke = Instance.new("UIStroke")
@@ -786,13 +809,7 @@ local function makeToggle(name, label, y, color)
     return b
 end
 
-local bottom = 0
-for _, child in ipairs(panel:GetChildren()) do
-    if child:IsA("GuiObject") then
-        bottom = math.max(bottom, child.Position.Y.Offset + child.Size.Y.Offset)
-    end
-end
-local sectionY = bottom + 18
+local sectionY = 116
 local section = Instance.new("TextLabel")
 section.Name = "FarmSectionHeader"
 section.Size = UDim2.new(1, -24, 0, 20)
@@ -803,13 +820,27 @@ section.TextColor3 = Color3.fromRGB(104, 220, 195)
 section.Font = Enum.Font.GothamBlack
 section.TextSize = 10
 section.TextXAlignment = Enum.TextXAlignment.Left
-section.ZIndex = 8
+section.ZIndex = 12
+section.Visible = true
 section.Parent = panel
 
-local farmButton = makeToggle("AutoFarm", "AUTO FARM", sectionY + 26, Color3.fromRGB(34, 94, 75))
-local feedButton = makeToggle("AutoFeed", "AUTO FEED", sectionY + 69, Color3.fromRGB(44, 83, 128))
-local convertButton = makeToggle("AutoConvert", "AUTO CONVERT", sectionY + 112, Color3.fromRGB(113, 77, 39))
-panel.CanvasSize = UDim2.new(0, 0, 0, sectionY + 160)
+local farmButton = makeToggle("AutoFarm", "AUTO FARM", sectionY + 24, Color3.fromRGB(34, 94, 75))
+local feedButton = makeToggle("AutoFeed", "AUTO FEED", sectionY + 66, Color3.fromRGB(44, 83, 128))
+local convertButton = makeToggle("AutoConvert", "AUTO CONVERT", sectionY + 108, Color3.fromRGB(113, 77, 39))
+
+-- Hitung ulang canvas secara eksplisit; jangan bergantung pada AutomaticCanvasSize.
+panel.AutomaticCanvasSize = Enum.AutomaticSize.None
+panel.ScrollingEnabled = true
+panel.ScrollBarThickness = 4
+local contentBottom = 0
+for _, child in ipairs(panel:GetChildren()) do
+    if child:IsA("GuiObject") and child.Visible then
+        contentBottom = math.max(contentBottom,
+            child.Position.Y.Offset + child.AbsoluteSize.Y + 14)
+    end
+end
+panel.CanvasSize = UDim2.new(0, 0, 0, contentBottom)
+
 local function paint(button, label, enabled, onColor, offColor)
     button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
     button.BackgroundColor3 = enabled and onColor or offColor

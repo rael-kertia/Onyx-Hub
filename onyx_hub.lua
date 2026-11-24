@@ -691,7 +691,7 @@ source = onyxReplaceLineStrict(
     "HEADER ZINDEX"
 )
 source = onyxReplaceLineStrict(
-    source, 'title.Text = "ONYX HUB"',
+    source, 'title.Text = "RAEL\'S TRICKS V18.2"',
     'title.Text = "ONYX HUB"\ntitle.ZIndex = 6',
     "TITLE ZINDEX"
 )

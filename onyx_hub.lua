@@ -67,7 +67,53 @@ do
 
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
-    local panelHeight = math.min(340, math.max(300, viewport.Y - 150))
+    local panelHeight = math.min(420, math.max(260, viewport.Y - 110))
+
+    -- Fit the existing feature controls inside a mobile-safe scrolling viewport.
+    frame.Size = UDim2.fromOffset(252, panelHeight)
+    frame.Position = UDim2.new(1, -266, 0, math.max(12, math.min(95, viewport.Y - panelHeight - 12)))
+
+    local contentScroll = Instance.new("ScrollingFrame")
+    contentScroll.Name = "FeatureScroll"
+    contentScroll.Position = UDim2.fromOffset(0, 47)
+    contentScroll.Size = UDim2.new(1, 0, 1, -53)
+    contentScroll.BackgroundTransparency = 1
+    contentScroll.BorderSizePixel = 0
+    contentScroll.ScrollBarThickness = 3
+    contentScroll.ScrollBarImageColor3 = Color3.fromRGB(76, 190, 170)
+    contentScroll.CanvasPosition = Vector2.new(0, 0)
+    contentScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    contentScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    contentScroll.ZIndex = 2
+    contentScroll.Parent = frame
+
+    local contentPadding = Instance.new("UIPadding")
+    contentPadding.PaddingBottom = UDim.new(0, 12)
+    contentPadding.Parent = contentScroll
+
+    -- Preserve every legacy control's exact authored position and size.
+    local maxBottom = 0
+    for _, child in ipairs(frame:GetChildren()) do
+        if child:IsA("GuiObject")
+        and child ~= header
+        and child ~= contentScroll
+        and child.Name ~= "ExitButton" then
+            local y = child.Position.Y.Offset
+            if y >= 45 then
+                local h = child.AbsoluteSize.Y
+                maxBottom = math.max(maxBottom, y - 45 + h + 12)
+                child.Position = UDim2.new(
+                    child.Position.X.Scale,
+                    child.Position.X.Offset,
+                    child.Position.Y.Scale,
+                    y - 45
+                )
+                child.Parent = contentScroll
+            end
+        end
+    end
+    contentScroll.CanvasSize = UDim2.new(0, 0, 0, maxBottom)
+
 
     -- Icon rail stays available while the expandable control panel is hidden.
     local rail = Instance.new("Frame")

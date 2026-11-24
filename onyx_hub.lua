@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix10-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix11-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -816,7 +816,7 @@ local farmOK, farmError = pcall(function()
         scroll = scroll
     }
 
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-farm-visible-fix10-20261125"
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-farm-visible-fix11-20261125"
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
@@ -842,7 +842,6 @@ local farmOK, farmError = pcall(function()
         paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
         paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
     end
-    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
     -- gui now points to ONYX itself, so workers end with ONYX and no second GUI exists.
     local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))

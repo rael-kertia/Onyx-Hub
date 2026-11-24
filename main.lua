@@ -37,7 +37,7 @@ end
 
 local function boot()
     setStatus("MENGAMBIL CORE...", false)
-    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua"
+    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=4a68b6adeacbfd7bc8e6b7c8679669782c870a72"
     local response = game:HttpGet(url)
     assert(type(response) == "string" and #response > 10000, "CORE KOSONG / GAGAL DIUNDUH")
     setStatus("CORE DITERIMA - MEMERIKSA...", false)

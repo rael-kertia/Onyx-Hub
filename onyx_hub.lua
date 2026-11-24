@@ -179,7 +179,7 @@ do
     connect(menuButton.Activated, function()
         if not alive() then return end
         frame.Visible = not frame.Visible
-        miniButton.Visible = not frame.Visible
+        miniButton.Visible = false
         menuButton.Text = frame.Visible and "≡" or "›"
     end)
 
@@ -273,7 +273,12 @@ do
     connect(minimizeChoice.Activated, function()
         shade.Visible = false
         frame.Visible = false
-        miniButton.Visible = true
+        miniButton.Visible = false
+    end)
+
+    connect(minimizeButton.Activated, function()
+        frame.Visible = false
+        miniButton.Visible = false
     end)
 
     connect(stopChoice.Activated, function()

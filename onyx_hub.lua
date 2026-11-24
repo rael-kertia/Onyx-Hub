@@ -847,7 +847,7 @@ end
     local first = assert(farmSource:find("-- NEW GUI: three feature toggles only", 1, true), "BLOK GUI FARM ASLI TIDAK DITEMUKAN")
     local last = assert(farmSource:find("-- DROPPING SCANNER", first, true), "AKHIR BLOK GUI FARM TIDAK DITEMUKAN")
     assert(last > first, "RENTANG BLOK GUI FARM TIDAK VALID")
-    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\\n" .. farmSource:sub(last)
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
     local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()

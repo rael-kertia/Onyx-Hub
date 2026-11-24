@@ -323,7 +323,7 @@ do
 end
 ]====]
 
-local compiled, compileError = loadstring(source)"
+local compiled, compileError = loadstring(source)
 local at = wrapper:find(marker, 1, true)
 assert(at, "Titik patch core ONYX tidak ditemukan")
 

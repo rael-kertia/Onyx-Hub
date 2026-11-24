@@ -65,23 +65,8 @@ do
     -- Disable the legacy immediate-exit X; use the confirmation dialog below.
     if exitButton then exitButton.Visible = false end
 
-    -- Header dibuat eksplisit karena core asli tidak memiliki Frame bernama Header.
-    frame.Name = "Main"
-    local header = Instance.new("Frame")
-    header.Name = "Header"
-    header.Size = UDim2.new(1, 0, 0, 38)
-    header.Position = UDim2.fromOffset(0, 0)
-    header.BackgroundColor3 = Color3.fromRGB(16, 23, 36)
-    header.BorderSizePixel = 0
-    header.ZIndex = 4
-    header.Parent = frame
-    title.Parent = header
-    title.Position = UDim2.fromOffset(10, 0)
-    title.Size = UDim2.new(1, -105, 1, 0)
-    title.ZIndex = 6
-    minimizeButton.Parent = header
-    minimizeButton.Position = UDim2.new(1, -96, 0, 7)
-    minimizeButton.ZIndex = 20
+    -- Core restore sudah membuat Header, Title, dan tombol minimize.
+    assert(header and header.Parent == frame, "HEADER CORE TIDAK DITEMUKAN")
 
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
@@ -480,8 +465,8 @@ source = onyxReplaceBetween(
 )
 
 
--- LAYOUT PATCH - MATCH DENGAN SUMBER CORE ASLI
--- Marker diperiksa terhadap source yang sudah didekode, bukan asumsi nama GUI.
+-- LAYOUT PATCH - MATCH DENGAN CORE RESTORE
+-- Semua marker di bawah dicocokkan dengan guiCode yang dibentuk main_obfuscated.lua.
 
 local function onyxReplaceLineStrict(text, prefix, newLine, label)
     local a = text:find(prefix, 1, true)
@@ -494,9 +479,21 @@ end
 
 source = onyxReplaceLineStrict(
     source,
-    'title.Text = "RAEL\'S TRICKS V18.2"',
+    'title.Text = "RAEL\'S TRICKS"',
     'title.Text = "ONYX HUB"',
     "TITLE TEXT"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'title.Size = UDim2.new(1, -48, 0, 21)',
+    'title.Size = UDim2.new(1, -105, 0, 21)',
+    "TITLE WIDTH"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'minimizeButton.Text = "\u0014"',
+    'minimizeButton.Text = "-"',
+    "MINIMIZE GLYPH"
 )
 source = onyxReplaceLineStrict(
     source,
@@ -506,13 +503,13 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
-    "    miniButton.Visible = true",
-    "    miniButton.Visible = false",
+    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
+    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = false end)',
     "HIDE LEGACY MINI"
 )
 
-assert(source:find("connect(minimizeButton.Activated, function()", 1, true),
-    "MINIMIZE EVENT TIDAK DITEMUKAN")
+assert(source:find('header.Name = "Header"', 1, true),
+    "HEADER TIDAK DITEMUKAN")
 assert(source:find("connect(miniButton.Activated, function()", 1, true),
     "REOPEN EVENT TIDAK DITEMUKAN")
 
@@ -858,7 +855,7 @@ local farmOK, farmError = pcall(function()
 
     local farmGui = playerGui:WaitForChild("RaelFarmFeedConvert", 10)
     assert(farmGui, "GUI FARM TIDAK TERBENTUK")
-    local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
+    local mainGui = playerGui:FindFirstChild("RaelsTricksV1")
     assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
     local scroll = mainGui:FindFirstChild("FeatureScroll", true)
     assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")

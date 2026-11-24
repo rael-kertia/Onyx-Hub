@@ -1,6 +1,12 @@
 -- ONYX HUB - CORE LOADER
 -- Loader diagnostics are intentionally silent; no status UI is shown.
-local function diagnosticStatus(message, failed) end
+local function diagnosticStatus(message, failed)
+    if failed then
+        local report = "ONYX FIX13: " .. tostring(message)
+        pcall(function() if setclipboard then setclipboard(report) end end)
+        pcall(function() warn(report) end)
+    end
+end
 local diagnosticGui = nil
 
 local function bootOnyxHub()
@@ -46,9 +52,21 @@ end
 
 source = onyxReplaceLineStrict(
     source,
-    'title.Text = "RAEL\'S TRICKS V18.2"',
+    'title.Text = "RAEL\'S TRICKS"',
     'title.Text = "ONYX HUB"',
     "TITLE TEXT"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'local oldGui = playerGui:FindFirstChild("RaelsTricksV1")',
+    'local oldGui = playerGui:FindFirstChild("RaelsTricksV18")',
+    "GUI CLEANUP NAME"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'gui.Name = "RaelsTricksV1"',
+    'gui.Name = "RaelsTricksV18"',
+    "GUI ROOT NAME"
 )
 source = onyxReplaceLineStrict(
     source,

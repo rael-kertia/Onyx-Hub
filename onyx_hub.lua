@@ -1075,7 +1075,7 @@ local farmOK, farmError = pcall(function()
     local farmTitle = farmPanel:FindFirstChildWhichIsA("TextLabel")
     if farmTitle then farmTitle.Text = "ONYX // FARM SYSTEM" end
 
-    local oldMinimize = farmPanel:FindFirstChild("Minimize")
+    local oldMinimize = farmPanel:FindFirstChildWhichIsA("TextButton")
     if oldMinimize then oldMinimize.Visible = false end
     local oldExit = farmPanel:FindFirstChild("ExitButton")
     if oldExit then oldExit.Visible = false end

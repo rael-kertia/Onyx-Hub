@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix3-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix4-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -100,8 +100,7 @@ end)]],
     "MINIMIZE TO ONYX BUBBLE"
 )
 
-assert(source:find('header.Name = "Header"', 1, true),
-    "HEADER TIDAK DITEMUKAN")
+-- Core GUI memakai frame langsung; tidak ada objek Header terpisah.
 assert(source:find("connect(miniButton.Activated, function()", 1, true),
     "REOPEN EVENT TIDAK DITEMUKAN")
 
@@ -393,12 +392,12 @@ source = source .. [====[
 -- Status remains internal only; remove the visible status panel.
 if statusPanel and statusPanel.Parent then statusPanel:Destroy() end
 local function setStatus(msg) end
+local exitButton
 do
-    -- Keep the core header controls; no extra X button is created.
     -- Core saat ini memakai frame langsung, bukan objek Header terpisah.
     local header = frame
     minimizeButton.Position = UDim2.new(1, -58, 0, 1)
-    local exitButton = Instance.new("TextButton")
+    exitButton = Instance.new("TextButton")
     exitButton.Name = "OnyxExitButton"
     exitButton.Size = UDim2.fromOffset(25, 19)
     exitButton.Position = UDim2.new(1, -29, 0, 1)

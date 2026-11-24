@@ -55,11 +55,11 @@ diagnosticStatus("CORE TERUNDUH - MENYIAPKAN PATCH...", false)
 
 -- Patch dilakukan setelah seluruh patch asli CORE RESTORE,
 -- tepat sebelum core asli di-compile dan dijalankan.
-local marker = "
--- ==========================================
--- ONYX HYBRID SHELL + SAFE EXIT CONFIRMATION
--- Visual/navigation layer only; feature workers remain untouched.
--- ==========================================
+local marker = "local compiled, compileError = loadstring(source)"
+local at = wrapper:find(marker, 1, true)
+assert(at, "Titik patch core ONYX tidak ditemukan")
+
+local patch = [==[
 source = source .. [====[
 do
     -- Disable the legacy immediate-exit X; use the confirmation dialog below.
@@ -323,11 +323,6 @@ do
 end
 ]====]
 
-local compiled, compileError = loadstring(source)
-local at = wrapper:find(marker, 1, true)
-assert(at, "Titik patch core ONYX tidak ditemukan")
-
-local patch = [==[
 local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
     local a = text:find(firstMarker, 1, true)
     if not a then error("ONYX patch: marker awal tidak ditemukan: " .. firstMarker) end

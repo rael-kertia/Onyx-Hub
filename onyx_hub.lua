@@ -1040,6 +1040,57 @@ local chunk, compileError = loadstring(wrapper)
 assert(chunk, "Wrapper compile gagal: " .. tostring(compileError))
 diagnosticStatus("MENJALANKAN CORE...", false)
 chunk()
+
+-- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
+diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
+local farmOK, farmError = pcall(function()
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua"
+    local farmSource = game:HttpGet(farmUrl)
+    assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
+    farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
+    local farmChunk, farmCompileError = loadstring(farmSource)
+    assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
+    farmChunk()
+
+    local farmGui = playerGui:WaitForChild("RaelFarmFeedConvert", 10)
+    assert(farmGui, "GUI FARM TIDAK TERBENTUK")
+    local mainGui = playerGui:FindFirstChild("RaelsTricksV1")
+    assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
+    local scroll = mainGui:FindFirstChild("FeatureScroll", true)
+    assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
+    local farmPanel = farmGui:FindFirstChild("Panel")
+    assert(farmPanel, "PANEL FARM TIDAK DITEMUKAN")
+
+    local bottom = 0
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("GuiObject") then
+            bottom = math.max(bottom, child.Position.Y.Offset + child.AbsoluteSize.Y)
+        end
+    end
+
+    farmPanel.Position = UDim2.fromOffset(12, bottom + 14)
+    farmPanel.Size = UDim2.new(1, -24, 0, 174)
+    farmPanel.Parent = scroll
+
+    local farmTitle = farmPanel:FindFirstChildWhichIsA("TextLabel")
+    if farmTitle then farmTitle.Text = "ONYX // FARM SYSTEM" end
+
+    local oldMinimize = farmPanel:FindFirstChild("Minimize")
+    if oldMinimize then oldMinimize.Visible = false end
+    local oldExit = farmPanel:FindFirstChild("ExitButton")
+    if oldExit then oldExit.Visible = false end
+    local oldMini = farmGui:FindFirstChild("RaelFarmMini")
+    if oldMini then oldMini.Visible = false end
+
+    -- The hidden ScreenGui keeps the original worker lifetime valid.
+    farmGui.Enabled = false
+end)
+
+if not farmOK then
+    diagnosticStatus("FARM INTEGRASI GAGAL: " .. tostring(farmError):sub(1, 140), true)
+else
+    diagnosticStatus("ONYX + FARM TERINTEGRASI", false)
+end
 end
 
 local bootOK, bootError = pcall(bootOnyxHub)

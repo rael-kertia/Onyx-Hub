@@ -504,6 +504,12 @@ source = onyxReplaceLineStrict(
     'miniButton.Text = "O"',
     "MINI BRAND"
 )
+source = onyxReplaceLineStrict(
+    source,
+    "    miniButton.Visible = true",
+    "    miniButton.Visible = false",
+    "HIDE LEGACY MINI"
+)
 
 assert(source:find("connect(minimizeButton.Activated, function()", 1, true),
     "MINIMIZE EVENT TIDAK DITEMUKAN")

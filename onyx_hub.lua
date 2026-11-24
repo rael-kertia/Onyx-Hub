@@ -399,8 +399,9 @@ do
     minimizeButton.Position = UDim2.new(1, -94, 0, 2)
     exitButton = Instance.new("TextButton")
     exitButton.Name = "OnyxExitButton"
-    exitButton.Size = UDim2.fromOffset(48, 36)
-    exitButton.Position = UDim2.new(1, -52, 0, 1)
+    -- X memakai ukuran dan posisi tombol minimize asli.
+    exitButton.Size = minimizeButton.Size
+    exitButton.Position = UDim2.new(1, -29, 0, 1)
     exitButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
     exitButton.BorderSizePixel = 0
     exitButton.Text = "X"
@@ -437,7 +438,24 @@ do
             end
         end
 
-        local playerGui = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        -- Hapus TP LOCATION secara eksplisit dari Backpack maupun Character.
+        local Players = game:GetService("Players")
+        local localPlayer = Players.LocalPlayer
+        local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+        local character = localPlayer.Character
+        for _, container in ipairs({backpack, character}) do
+            if container then
+                for _, object in ipairs(container:GetDescendants()) do
+                    if object:IsA("Tool") and object.Name == "TP LOCATION" then
+                        pcall(function() object:Destroy() end)
+                    end
+                end
+                local directTool = container:FindFirstChild("TP LOCATION")
+                if directTool then pcall(function() directTool:Destroy() end) end
+            end
+        end
+
+        local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
         if playerGui then
             for _, guiName in ipairs({"RaelsTricksV18", "RaelFarmFeedConvert"}) do
                 local oldGui = playerGui:FindFirstChild(guiName)
@@ -733,90 +751,92 @@ local farmOK, farmError = pcall(function()
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
-    -- Worker tidak lagi bergantung pada ScreenGui Farm terpisah.
-    local oldWorkerLoop = "while alive() and gui.Parent do"
-    local loopCount = select(2, farmSource:gsub(oldWorkerLoop, ""))
-    assert(loopCount == 2, "FARM PATCH: JUMLAH WORKER LOOP BERUBAH")
-    farmSource = farmSource:gsub(oldWorkerLoop, "while alive() do")
-    local oldDestroyHook = [=[connect(gui.Destroying, function()
-    if env.RFC_Session == SESSION then env.RFC_Running = false end
-end)]=]
-    assert(farmSource:find(oldDestroyHook, 1, true), "FARM PATCH: DESTROY HOOK TIDAK DITEMUKAN")
-    farmSource = farmSource:gsub(oldDestroyHook, "-- ScreenGui dikelola wrapper ONYX; worker dikendalikan RFC_Running.")
-    local farmChunk, farmCompileError = loadstring(farmSource)
+
+    -- Bangun kontrol Farm langsung di FeatureScroll ONYX.
+    -- Tidak membuat ScreenGui, panel, minimize, atau tombol X kedua.
+    local uiStart = "-- NEW GUI: three feature toggles only";
+    local uiEnd = "-- DROPPING SCANNER";
+    local first = farmSource:find(uiStart, 1, true)
+    local last = farmSource:find(uiEnd, first or 1, true)
+    assert(first and last and last > first, "FARM UI PATCH: BLOK UI TIDAK DITEMUKAN")
+    local integratedUI = [=[
+-- ONYX EMBEDDED FARM UI
+local gui = playerGui:WaitForChild("RaelsTricksV18")
+local panel = gui:FindFirstChild("FeatureScroll", true)
+assert(panel and panel:IsA("ScrollingFrame"), "ONYX FEATURESCROLL TIDAK DITEMUKAN")
+
+local function setStatus(message) end
+local function makeToggle(name, label, y, color)
+    local b = Instance.new("TextButton")
+    b.Name = name
+    b.Size = UDim2.new(1, -24, 0, 36)
+    b.Position = UDim2.fromOffset(12, y)
+    b.BackgroundColor3 = color
+    b.TextColor3 = Color3.new(1, 1, 1)
+    b.Text = label .. "  [OFF]"
+    b.TextSize = 11
+    b.Font = Enum.Font.GothamBold
+    b.ZIndex = 8
+    b.Parent = panel
+    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 8)
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(47, 88, 105)
+    stroke.Thickness = 1
+    stroke.Parent = b
+    return b
+end
+
+local bottom = 0
+for _, child in ipairs(panel:GetChildren()) do
+    if child:IsA("GuiObject") then
+        bottom = math.max(bottom, child.Position.Y.Offset + child.Size.Y.Offset)
+    end
+end
+local sectionY = bottom + 18
+local section = Instance.new("TextLabel")
+section.Name = "FarmSectionHeader"
+section.Size = UDim2.new(1, -24, 0, 20)
+section.Position = UDim2.fromOffset(12, sectionY)
+section.BackgroundTransparency = 1
+section.Text = "FARM AUTOMATION"
+section.TextColor3 = Color3.fromRGB(104, 220, 195)
+section.Font = Enum.Font.GothamBlack
+section.TextSize = 10
+section.TextXAlignment = Enum.TextXAlignment.Left
+section.ZIndex = 8
+section.Parent = panel
+
+local farmButton = makeToggle("AutoFarm", "AUTO FARM", sectionY + 26, Color3.fromRGB(34, 94, 75))
+local feedButton = makeToggle("AutoFeed", "AUTO FEED", sectionY + 69, Color3.fromRGB(44, 83, 128))
+local convertButton = makeToggle("AutoConvert", "AUTO CONVERT", sectionY + 112, Color3.fromRGB(113, 77, 39))
+panel.CanvasSize = UDim2.new(0, 0, 0, sectionY + 160)
+local function paint(button, label, enabled, onColor, offColor)
+    button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
+    button.BackgroundColor3 = enabled and onColor or offColor
+end
+local function updateUI()
+    paint(farmButton, "AUTO FARM", autoFarm, Color3.fromRGB(32,145,94), Color3.fromRGB(34,94,75))
+    paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
+    paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
+end
+]=]
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\\n" .. farmSource:sub(last)
+    -- gui now points to ONYX itself, so workers end with ONYX and no second GUI exists.
+    local farmChunk, farmCompileError = loadstring(farmSource)    local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()
 
     local Players = game:GetService("Players")
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local farmGui = playerGui:WaitForChild("RaelFarmFeedConvert", 10)
-    assert(farmGui, "GUI FARM TIDAK TERBENTUK")
     local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
     assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
     local scroll = mainGui:FindFirstChild("FeatureScroll", true)
     assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
-    local farmPanel = farmGui:FindFirstChild("Panel")
-    assert(farmPanel, "PANEL FARM TIDAK DITEMUKAN")
-
-    -- Pindahkan kontrol worker ke scroll utama; tidak mempertahankan GUI Farm.
-    local bottom = 0
-    for _, child in ipairs(scroll:GetChildren()) do
-        if child:IsA("GuiObject") then
-            bottom = math.max(bottom, child.Position.Y.Offset + child.AbsoluteSize.Y)
-        end
+    for _, controlName in ipairs({"AutoFarm", "AutoFeed", "AutoConvert"}) do
+        local control = scroll:FindFirstChild(controlName)
+        assert(control and control:IsA("TextButton"), "KONTROL FARM TIDAK TERTANAM: " .. controlName)
     end
-
-    local farmSectionY = bottom + 18
-    local farmSection = Instance.new("TextLabel")
-    farmSection.Name = "FarmSectionHeader"
-    farmSection.Size = UDim2.new(1, -24, 0, 20)
-    farmSection.Position = UDim2.fromOffset(12, farmSectionY)
-    farmSection.BackgroundTransparency = 1
-    farmSection.Text = "FARM AUTOMATION"
-    farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
-    farmSection.Font = Enum.Font.GothamBlack
-    farmSection.TextSize = 10
-    farmSection.TextXAlignment = Enum.TextXAlignment.Left
-    farmSection.ZIndex = 6
-    farmSection.Parent = scroll
-
-    local farmControls = {
-        farmPanel:FindFirstChild("AutoFarm"),
-        farmPanel:FindFirstChild("AutoFeed"),
-        farmPanel:FindFirstChild("AutoConvert")
-    }
-    local farmControlY = farmSectionY + 26
-    for _, control in ipairs(farmControls) do
-        assert(control and control:IsA("GuiObject"), "KONTROL FARM TIDAK LENGKAP")
-        control.Parent = scroll
-        control.Visible = true
-        control.Position = UDim2.fromOffset(12, farmControlY)
-        control.Size = UDim2.new(1, -24, 0, 36)
-        control.ZIndex = 6
-        control.BackgroundColor3 = Color3.fromRGB(24, 48, 62)
-        control.TextColor3 = Color3.fromRGB(230, 244, 250)
-        control.Font = Enum.Font.GothamBold
-        control.TextSize = 11
-        local c = control:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-        c.CornerRadius = UDim.new(0, 8)
-        c.Parent = control
-        local st = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-        st.Color = Color3.fromRGB(47, 88, 105)
-        st.Thickness = 1
-        st.Parent = control
-        farmControlY = farmControlY + 43
-    end
-
-    scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 14)
-
-    -- Semua kontrol sudah dipindahkan ke FeatureScroll; hapus ScreenGui Farm.
-    -- Worker tetap berjalan melalui env.RFC_Running.
-    local farmStatus = farmPanel:FindFirstChildWhichIsA("TextLabel")
-    if farmStatus then farmStatus:Destroy() end
-    farmGui.Enabled = false
-    farmGui:Destroy()
-    local leftoverFarmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
-    if leftoverFarmGui then leftoverFarmGui:Destroy() end
+    assert(not playerGui:FindFirstChild("RaelFarmFeedConvert"), "GUI FARM TERPISAH MASIH ADA")
 
     local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")

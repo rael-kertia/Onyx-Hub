@@ -266,7 +266,7 @@ local jamService
 local jamButton = Instance.new("TextButton")
 jamButton.Name = "AutoJamAjaibButton"
 jamButton.Size = UDim2.fromOffset(180, 29)
-jamButton.Position = UDim2.fromOffset(12, 138)
+jamButton.Position = UDim2.fromOffset(12, 300)
 jamButton.ZIndex = 10
 jamButton.Active = true
 jamButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
@@ -631,7 +631,7 @@ do
     local rail = Instance.new("Frame")
     rail.Name = "OnyxIconRail"
     rail.Size = UDim2.fromOffset(46, panelHeight)
-    rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 54), 0, 95)
+    rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 68), 0, frame.Position.Y.Offset)
     rail.BackgroundColor3 = Color3.fromRGB(10, 15, 26)
     rail.BorderSizePixel = 0
     rail.ZIndex = 40
@@ -829,7 +829,7 @@ do
         connect(camera:GetPropertyChangedSignal("ViewportSize"), function()
             if not rail.Parent then return end
             local size = camera.ViewportSize
-            rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 54), 0, math.max(12, math.min(95, size.Y - panelHeight - 12)))
+            rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 68), 0, math.max(12, math.min(95, size.Y - panelHeight - 12)))
         end)
     end
 end

@@ -1090,6 +1090,8 @@ local farmOK, farmError = pcall(function()
     -- The hidden ScreenGui keeps the original worker lifetime valid.
     farmGui.Enabled = false
 
+    local mainFrame = mainGui:FindFirstChild("Main")
+    assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")
     local rail = mainGui:FindFirstChild("OnyxIconRail")
     if rail then
         local function makeShortcut(name, glyph, y)
@@ -1113,7 +1115,7 @@ local farmOK, farmError = pcall(function()
         local farmShortcut = makeShortcut("FarmShortcut", "♧", 158)
 
         homeShortcut.Activated:Connect(function()
-            frame.Visible = true
+            mainFrame.Visible = true
             scroll.CanvasPosition = Vector2.new(0, 0)
         end)
         farmShortcut.Activated:Connect(function()

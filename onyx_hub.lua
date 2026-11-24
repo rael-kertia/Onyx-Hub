@@ -89,7 +89,6 @@ miniButton.TextSize = 10
 miniButton.Font = Enum.Font.GothamBlack
 miniButton.BackgroundColor3 = Color3.fromRGB(13, 148, 136)
 miniButton.Visible = false
-Instance.new("UICorner", miniButton).CornerRadius = UDim.new(1, 0)
 connect(minimizeButton.Activated, function()
     frame.Visible = false
     miniButton.Visible = true

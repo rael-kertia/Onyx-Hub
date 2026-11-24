@@ -946,7 +946,8 @@ local farmOK, farmError = pcall(function()
             mainFrame.Visible = true
             scroll.CanvasPosition = Vector2.new(0, farmSectionY)
         end)
-    endend)
+    end
+end)
 
 if not farmOK then
     diagnosticStatus("FARM INTEGRASI GAGAL: " .. tostring(farmError):sub(1, 140), true)

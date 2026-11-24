@@ -820,9 +820,9 @@ local function updateUI()
     paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
 end
 ]=]
-    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\\n" .. farmSource:sub(last)
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
     -- gui now points to ONYX itself, so workers end with ONYX and no second GUI exists.
-    local farmChunk, farmCompileError = loadstring(farmSource)    local farmChunk, farmCompileError = loadstring(farmSource)
+    local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()
 

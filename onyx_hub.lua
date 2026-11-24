@@ -668,9 +668,8 @@ do
 
     connect(menuButton.Activated, function()
         if not alive() then return end
-        frame.Visible = not frame.Visible
-        miniButton.Visible = false
-        menuButton.Text = frame.Visible and "≡" or "›"
+        contentScroll.Visible = not contentScroll.Visible
+        menuButton.Text = contentScroll.Visible and "≡" or "›"
     end)
 
     -- Close is deliberately separate from minimize.
@@ -763,12 +762,12 @@ do
     connect(minimizeChoice.Activated, function()
         shade.Visible = false
         frame.Visible = false
-        miniButton.Visible = false
+        miniButton.Visible = true
     end)
 
     connect(minimizeButton.Activated, function()
         frame.Visible = false
-        miniButton.Visible = false
+        miniButton.Visible = true
     end)
 
     connect(stopChoice.Activated, function()
@@ -804,8 +803,7 @@ do
     -- Sidebar is physically part of the main window; drag the whole ONYX GUI from header.
     local UserInputService = game:GetService("UserInputService")
     local dragging, dragInput, dragStart, startPosition = false, nil, nil, nil
-    header.Active = true
-    header.InputBegan:Connect(function(input)
+    local function beginWindowDrag(input)
         if input.UserInputType == Enum.UserInputType.Touch
         or input.UserInputType == Enum.UserInputType.MouseButton1 then
             dragging = true
@@ -816,7 +814,11 @@ do
                 if input.UserInputState == Enum.UserInputState.End then dragging = false end
             end)
         end
-    end)
+    end
+    header.Active = true
+    rail.Active = true
+    header.InputBegan:Connect(beginWindowDrag)
+    rail.InputBegan:Connect(beginWindowDrag)
     UserInputService.InputChanged:Connect(function(input)
         if dragging and (input.UserInputType == Enum.UserInputType.Touch
         or input.UserInputType == Enum.UserInputType.MouseMovement) then

@@ -934,6 +934,44 @@ end
             end
         end)
     end
+
+    -- FIX SCROLL: hitung batas konten dari posisi absolut SEMUA turunan,
+    -- bukan hanya anak langsung. Ini mencakup kartu/section AUTO GACHA dan PAID
+    -- yang mungkin berada di dalam container bertingkat.
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.ScrollingEnabled = true
+    local function refreshOnyxCanvas()
+        if not scroll.Parent then return end
+        local bottom = 0
+        local scrollTop = scroll.AbsolutePosition.Y
+        local currentOffset = scroll.CanvasPosition.Y
+        for _, item in ipairs(scroll:GetDescendants()) do
+            if item:IsA("GuiObject") and item.Visible then
+                local itemBottom = item.AbsolutePosition.Y - scrollTop
+                    + currentOffset + item.AbsoluteSize.Y
+                if itemBottom > bottom then bottom = itemBottom end
+            end
+        end
+        bottom = math.max(0, math.ceil(bottom + 24))
+        local current = scroll.CanvasSize.Y.Offset
+        if math.abs(current - bottom) > 1 then
+            scroll.CanvasSize = UDim2.new(0, 0, 0, bottom)
+        end
+    end
+
+    -- Tunggu satu frame agar Roblox menghitung AbsolutePosition/AbsoluteSize.
+    task.spawn(function()
+        task.wait(0.2)
+        refreshOnyxCanvas()
+    end)
+    scroll.DescendantAdded:Connect(function()
+        task.defer(refreshOnyxCanvas)
+    end)
+    scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        task.defer(refreshOnyxCanvas)
+    end)
+
 end)
 
 if not farmOK then

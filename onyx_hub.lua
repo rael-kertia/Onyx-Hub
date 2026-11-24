@@ -741,7 +741,7 @@ local farmOK, farmError = pcall(function()
     if farmTitle then farmTitle.Text = "ONYX // FARM SYSTEM" end
 
     local oldMinimize = farmPanel:FindFirstChildWhichIsA("TextButton")
-    if oldMinimize then oldMinimize.Visible = false end
+    if oldMinimize then oldMinimize.Visible = true end
     local oldExit = farmPanel:FindFirstChild("ExitButton")
     if oldExit then oldExit.Visible = false end
     local oldMini = farmGui:FindFirstChild("RaelFarmMini")
@@ -780,6 +780,7 @@ local farmOK, farmError = pcall(function()
         end)
         farmShortcut.Activated:Connect(function()
             mainFrame.Visible = true
+            farmPanel.Visible = true
             scroll.CanvasPosition = Vector2.new(0, farmPanel.Position.Y.Offset)
         end)
     end

@@ -837,9 +837,12 @@ local farmOK, farmError = pcall(function()
     local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 140, Color3.fromRGB(34, 94, 75))
     local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 182, Color3.fromRGB(44, 83, 128))
     local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 224, Color3.fromRGB(113, 77, 39))
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 420)
+    -- Canvas harus mengikuti seluruh isi menu; jangan dipatok 420px.
+    -- Konten dashboard + tombol Farm bisa lebih panjang dari tinggi panel.
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
     scroll.ScrollingEnabled = true
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
     getgenv().ONYX_FARM_UI = {
         AutoFarm = autoFarmButton,
         AutoFeed = autoFeedButton,

@@ -106,28 +106,47 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
+    'miniButton.Text = "O"',
+    'miniButton.Text = ""',
+    "REMOVE MINI O ICON"
+)
+source = onyxReplaceLineStrict(
+    source,
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
     [[local onyxMinimized = false
 local onyxExpandedSize = frame.Size
+local onyxChildVisibility = {}
 miniButton.Visible = false
 connect(minimizeButton.Activated, function()
-    onyxMinimized = not onyxMinimized
-    if onyxMinimized then
+    if not onyxMinimized then
         onyxExpandedSize = frame.Size
+        table.clear(onyxChildVisibility)
         for _, child in ipairs(frame:GetChildren()) do
-            if child ~= header then
-                pcall(function() child.Visible = false end)
+            if child:IsA("GuiObject") and child ~= header then
+                onyxChildVisibility[child] = child.Visible
+                child.Visible = false
             end
         end
-        frame.Size = UDim2.new(onyxExpandedSize.X.Scale, onyxExpandedSize.X.Offset, 0, header.Size.Y.Offset)
+        frame.Size = UDim2.new(
+            onyxExpandedSize.X.Scale,
+            onyxExpandedSize.X.Offset,
+            0,
+            math.max(header.AbsoluteSize.Y, header.Size.Y.Offset)
+        )
+        onyxMinimized = true
     else
         frame.Size = onyxExpandedSize
-        for _, child in ipairs(frame:GetChildren()) do
-            if child ~= header then
-                pcall(function() child.Visible = true end)
+        for child, wasVisible in pairs(onyxChildVisibility) do
+            if child and child.Parent == frame then
+                child.Visible = wasVisible
             end
         end
+        table.clear(onyxChildVisibility)
+        onyxMinimized = false
     end
+end)
+connect(miniButton.Activated, function()
+    miniButton.Visible = false
 end)]],
     "MINIMIZE COLLAPSE HEADER"
 )
@@ -443,6 +462,7 @@ connect(exitButton.Activated, function()
     homeworkEnabled = false
     jamAutoEnabled = false
     env.RaelV18Running = false
+    env.RFC_Running = false
 
     for _, connection in ipairs(env.RaelV18Connections or {}) do
         pcall(function() connection:Disconnect() end)
@@ -698,124 +718,13 @@ do
         menuButton.Text = contentScroll.Visible and "≡" or "›"
     end)
 
-    -- Close is deliberately separate from minimize.
-    local closeButton = Instance.new("TextButton")
-    closeButton.Name = "CloseConfirmButton"
-    closeButton.Size = UDim2.fromOffset(25, 25)
-    closeButton.Position = UDim2.new(1, -66, 0, 9)
-    closeButton.BackgroundColor3 = Color3.fromRGB(115, 38, 48)
-    closeButton.BorderSizePixel = 0
-    closeButton.Text = "×"
-    closeButton.TextColor3 = Color3.new(1, 1, 1)
-    closeButton.TextSize = 18
-    closeButton.Font = Enum.Font.GothamBold
-    closeButton.ZIndex = 25
-    closeButton.Parent = header
-    closeButton.Visible = false
-    Instance.new("UICorner", closeButton).CornerRadius = UDim.new(0, 7)
-
-    local shade = Instance.new("Frame")
-    shade.Name = "ExitConfirmation"
-    shade.Size = UDim2.fromScale(1, 1)
-    shade.BackgroundColor3 = Color3.fromRGB(5, 8, 14)
-    shade.BackgroundTransparency = 0.12
-    shade.BorderSizePixel = 0
-    shade.Visible = false
-    shade.ZIndex = 100
-    shade.Parent = frame
-    Instance.new("UICorner", shade).CornerRadius = UDim.new(0, 12)
-
-    local dialog = Instance.new("Frame")
-    dialog.Size = UDim2.new(1, -28, 0, 190)
-    dialog.Position = UDim2.new(0, 14, 0.5, -95)
-    dialog.BackgroundColor3 = Color3.fromRGB(20, 29, 44)
-    dialog.BorderSizePixel = 0
-    dialog.ZIndex = 101
-    dialog.Parent = shade
-    Instance.new("UICorner", dialog).CornerRadius = UDim.new(0, 11)
-
-    local dialogTitle = Instance.new("TextLabel")
-    dialogTitle.Size = UDim2.new(1, -20, 0, 28)
-    dialogTitle.Position = UDim2.fromOffset(10, 12)
-    dialogTitle.BackgroundTransparency = 1
-    dialogTitle.Text = "KELUAR DARI ONYX HUB?"
-    dialogTitle.TextColor3 = Color3.fromRGB(240, 245, 255)
-    dialogTitle.TextSize = 13
-    dialogTitle.Font = Enum.Font.GothamBold
-    dialogTitle.ZIndex = 102
-    dialogTitle.Parent = dialog
-
-    local dialogInfo = Instance.new("TextLabel")
-    dialogInfo.Size = UDim2.new(1, -24, 0, 38)
-    dialogInfo.Position = UDim2.fromOffset(12, 43)
-    dialogInfo.BackgroundTransparency = 1
-    dialogInfo.Text = "Minimize menyembunyikan menu. Stop All menghentikan seluruh automasi."
-    dialogInfo.TextColor3 = Color3.fromRGB(170, 185, 205)
-    dialogInfo.TextSize = 10
-    dialogInfo.TextWrapped = true
-    dialogInfo.Font = Enum.Font.Gotham
-    dialogInfo.ZIndex = 102
-    dialogInfo.Parent = dialog
-
-    local function dialogButton(name, textValue, y, color)
-        local button = Instance.new("TextButton")
-        button.Name = name
-        button.Size = UDim2.new(1, -24, 0, 30)
-        button.Position = UDim2.fromOffset(12, y)
-        button.BackgroundColor3 = color
-        button.BorderSizePixel = 0
-        button.Text = textValue
-        button.TextColor3 = Color3.new(1, 1, 1)
-        button.TextSize = 10
-        button.Font = Enum.Font.GothamBold
-        button.ZIndex = 102
-        button.Parent = dialog
-        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 7)
-        return button
-    end
-
-    local minimizeChoice = dialogButton("MinimizeChoice", "MINIMIZE - AUTOMASI TETAP BERJALAN", 88, Color3.fromRGB(37, 91, 83))
-    local stopChoice = dialogButton("StopAllChoice", "STOP ALL & EXIT", 124, Color3.fromRGB(145, 43, 52))
-    local cancelChoice = dialogButton("CancelExitChoice", "BATAL", 160, Color3.fromRGB(55, 68, 88))
-
-    connect(closeButton.Activated, function()
-        if alive() then shade.Visible = true end
-    end)
-
-    connect(cancelChoice.Activated, function()
-        shade.Visible = false
-    end)
-
-
-    connect(stopChoice.Activated, function()
-        -- Invalidate both feature sessions first so every worker exits.
-        env.RaelV18Running = false
-        env.RFC_Running = false
-
-        for _, key in ipairs({"RaelV18Connections", "RFC_Connections"}) do
-            local list = env[key]
-            if type(list) == "table" then
-                for _, connection in ipairs(list) do
-                    pcall(function() connection:Disconnect() end)
-                end
-            end
-        end
-
-        for _, key in ipairs({"RaelV18Objects", "RFC_Objects"}) do
-            local list = env[key]
-            if type(list) == "table" then
-                for _, object in ipairs(list) do
-                    pcall(function() object:Destroy() end)
-                end
-            end
-        end
-
-        pcall(function()
-            local farmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
-            if farmGui then farmGui:Destroy() end
-        end)
-        pcall(function() gui:Destroy() end)
-    end)
+    -- Hanya satu tombol X, ditempatkan di header utama.
+    assert(exitButton and exitButton.Parent, "TOMBOL EXIT CORE TIDAK DITEMUKAN")
+    exitButton.Parent = header
+    exitButton.Size = UDim2.fromOffset(25, 25)
+    exitButton.Position = UDim2.new(1, -66, 0, 9)
+    exitButton.ZIndex = 25
+    exitButton.Visible = true
 
     -- Satu frame memuat sidebar + konten. Drag memindahkan seluruh jendela.
     local UserInputService = game:GetService("UserInputService")

@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-bubble-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -395,8 +395,24 @@ if statusPanel and statusPanel.Parent then statusPanel:Destroy() end
 local function setStatus(msg) end
 do
     -- Keep the core header controls; no extra X button is created.
-    -- Core restore sudah membuat Header, Title, dan tombol minimize.
-    assert(header and header.Parent == frame, "HEADER CORE TIDAK DITEMUKAN")
+    -- Core saat ini memakai frame langsung, bukan objek Header terpisah.
+    local header = frame
+    minimizeButton.Position = UDim2.new(1, -58, 0, 1)
+    local exitButton = Instance.new("TextButton")
+    exitButton.Name = "OnyxExitButton"
+    exitButton.Size = UDim2.fromOffset(25, 19)
+    exitButton.Position = UDim2.new(1, -29, 0, 1)
+    exitButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
+    exitButton.BorderSizePixel = 0
+    exitButton.Text = "X"
+    exitButton.TextColor3 = Color3.new(1, 1, 1)
+    exitButton.TextSize = 12
+    exitButton.Font = Enum.Font.GothamBold
+    exitButton.Parent = header
+    Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 5)
+    connect(exitButton.Activated, function()
+        if gui and gui.Parent then gui:Destroy() end
+    end)
 
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
@@ -633,9 +649,6 @@ do
 
     -- Hanya satu tombol X, ditempatkan di header utama.
     assert(exitButton and exitButton.Parent, "TOMBOL EXIT CORE TIDAK DITEMUKAN")
-    exitButton.Parent = header
-    exitButton.Size = UDim2.fromOffset(25, 25)
-    exitButton.Position = UDim2.new(1, -66, 0, 9)
     exitButton.ZIndex = 25
     exitButton.Visible = true
 
@@ -692,9 +705,11 @@ local farmOK, farmError = pcall(function()
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()
 
+    local Players = game:GetService("Players")
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local farmGui = playerGui:WaitForChild("RaelFarmFeedConvert", 10)
     assert(farmGui, "GUI FARM TIDAK TERBENTUK")
-    local mainGui = playerGui:FindFirstChild("RaelsTricksV1")
+    local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
     assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
     local scroll = mainGui:FindFirstChild("FeatureScroll", true)
     assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
@@ -755,7 +770,7 @@ local farmOK, farmError = pcall(function()
     -- Buang panel, minimize, X, dan mini launcher Farm. Worker tetap aktif.
     farmGui:Destroy()
 
-    local mainFrame = mainGui:FindFirstChild("Main")
+    local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")
     local rail = mainGui:FindFirstChild("OnyxIconRail")
     if rail then

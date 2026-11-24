@@ -65,6 +65,24 @@ do
     -- Disable the legacy immediate-exit X; use the confirmation dialog below.
     if exitButton then exitButton.Visible = false end
 
+    -- Header dibuat eksplisit karena core asli tidak memiliki Frame bernama Header.
+    frame.Name = "Main"
+    local header = Instance.new("Frame")
+    header.Name = "Header"
+    header.Size = UDim2.new(1, 0, 0, 38)
+    header.Position = UDim2.fromOffset(0, 0)
+    header.BackgroundColor3 = Color3.fromRGB(16, 23, 36)
+    header.BorderSizePixel = 0
+    header.ZIndex = 4
+    header.Parent = frame
+    title.Parent = header
+    title.Position = UDim2.fromOffset(10, 0)
+    title.Size = UDim2.new(1, -105, 1, 0)
+    title.ZIndex = 6
+    minimizeButton.Parent = header
+    minimizeButton.Position = UDim2.new(1, -96, 0, 7)
+    minimizeButton.ZIndex = 20
+
     local camera = workspace.CurrentCamera
     local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
     local panelHeight = math.min(420, math.max(260, viewport.Y - 110))
@@ -462,184 +480,8 @@ source = onyxReplaceBetween(
 )
 
 
--- GACHA: gunakan tombol native game agar GachaController sendiri yang
--- menjalankan Spin, reveal BlindBox, dan seluruh proses klaim hadiah.
-local raelGachaNative = [=[
-local gachaService
-local function getGachaService()
-    if gachaService then return gachaService end
-    local rs = game:GetService("ReplicatedStorage")
-    local nk = rs:WaitForChild("NKSystem", 15)
-    if not nk then error("NKSystem tidak ditemukan") end
-    local packages = nk:WaitForChild("Packages", 15)
-    if not packages then error("Packages tidak ditemukan") end
-    local knitModule = packages:WaitForChild("Knit", 15)
-    if not knitModule then error("Knit tidak ditemukan") end
-    local Knit = require(knitModule)
-    gachaService = Knit.GetService("GachaService")
-    if not gachaService then error("GachaService tidak ditemukan") end
-    return gachaService
-end
-
--- Semua pemanggilan menunggu Promise selesai. Tidak ada retry otomatis.
-local function gachaCall(methodName, ...)
-    local args = table.pack(...)
-    local ok, requestOK, result = pcall(function()
-        local svc = getGachaService()
-        local method = svc[methodName]
-        if type(method) ~= "function" then
-            error("METHOD TIDAK DITEMUKAN: " .. methodName)
-        end
-        local promise = method(svc, table.unpack(args, 1, args.n))
-        if not promise or type(promise.await) ~= "function" then
-            error("RESPONS PROMISE TIDAK VALID: " .. methodName)
-        end
-        return promise:await()
-    end)
-
-    if not ok then return false, tostring(requestOK) end
-    if requestOK ~= true then
-        return false, result or ("SERVER MENOLAK: " .. methodName)
-    end
-    return true, result
-end
-
--- X10 = satu spin server, lalu klaim tiap indeks secara berurutan.
--- Jika satu klaim gagal, hentikan; jangan ulangi indeks yang sama.
-local function gachaClaimMulti(results)
-    if type(results) ~= "table" then
-        setStatus("GACHA: HASIL X10 TIDAK VALID")
-        return false
-    end
-
-    local count = #results
-    if count ~= 10 then
-        setStatus("GACHA: JUMLAH HASIL TIDAK 10 (" .. count .. ")")
-        return false
-    end
-
-    for i = 1, count do
-        if results[i] == nil then
-            setStatus("GACHA: HASIL KE-" .. i .. " KOSONG")
-            return false
-        end
-
-        setStatus("GACHA: KLAIM HADIAH " .. i .. "/10")
-        local claimOK, claimResult = gachaCall("ClaimOneMultiReward", i)
-        if not claimOK then
-            setStatus("GACHA: KLAIM GAGAL " .. i .. "/10 - " .. tostring(claimResult))
-            return false
-        end
-
-        -- Jeda presentasi tanpa animasi: mengikuti fase buka X10 di BlindBoxTampil.
-        -- Durasi reveal terukur: 0.75 + 0.55 + 0.50 + 0.45 + 1.60 + 0.30 = 4.15 detik.
-        -- Ini hanya pacing lokal; bukan perlindungan atau jaminan anti-detection.
-        if i < count then
-            task.wait(4.15)
-        end
-    end
-
-    setStatus("GACHA: 10 KLAIM SELESAI")
-    return true
-end
-
-local function gachaCycle()
-    setStatus("GACHA: MEMBACA STATE")
-    local stateOK, state = gachaCall("GetState")
-    if not stateOK or type(state) ~= "table" then
-        setStatus("GACHA: GAGAL MEMBACA STATE")
-        return false
-    end
-
-    local free = tonumber(state.free) or 0
-    if free >= 10 then
-        setStatus("GACHA: FREE X10")
-        local spinOK, result = gachaCall("SpinX10WithFree")
-        if not spinOK or type(result) ~= "table" or result.ok ~= true then
-            setStatus("GACHA: FREE X10 GAGAL")
-            return false
-        end
-        return gachaClaimMulti(result.results)
-
-    elseif free > 0 then
-        setStatus("GACHA: FREE SPIN 1X")
-        local spinOK, result = gachaCall("Spin")
-        if not spinOK or type(result) ~= "table" or result.ok ~= true then
-            setStatus("GACHA: FREE SPIN GAGAL")
-            return false
-        end
-
-        local claimOK, claimResult = gachaCall("ClaimReward")
-        if not claimOK then
-            setStatus("GACHA: KLAIM FREE SPIN GAGAL - " .. tostring(claimResult))
-            return false
-        end
-        setStatus("GACHA: FREE SPIN SELESAI")
-        return true
-
-    elseif gachaPaidEnabled then
-        setStatus("GACHA: PAID X10")
-        local spinOK, result = gachaCall("SpinX10WithMoney")
-        if not spinOK or type(result) ~= "table" or result.ok ~= true then
-            setStatus("GACHA: PAID X10 GAGAL")
-            return false
-        end
-        return gachaClaimMulti(result.results)
-
-    else
-        setStatus("GACHA: MENUNGGU FREE SPIN (PAID OFF)")
-        return nil
-    end
-end]=]
-
-source = onyxReplaceBetween(
-    source,
-    "local function getGachaService()",
-    "local function gachaWorker()",
-    raelGachaNative
-)
-
--- HILANGKAN HANYA STATUS AUTO ACC.
--- Ganti empat pemanggilan spesifik; jangan scan seluruh source karena
--- wrapper menambahkan patch fitur lain setelah blok Auto Acc.
-local autoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
-assert(autoAccStart, "Blok Auto Acc tidak ditemukan")
-
-local function onyxReplaceOnce(text, oldText, newText, label)
-    local a, b = text:find(oldText, 1, true)
-    assert(a, "Status Auto Acc tidak ditemukan: " .. label)
-    assert(not text:find(oldText, b + 1, true), "Status Auto Acc ganda: " .. label)
-    return text:sub(1, a - 1) .. newText .. text:sub(b + 1)
-end
-
-local autoAccMarker = "local autoAccLast = {}"
-local markerAt = source:find(autoAccMarker, autoAccStart, true)
-assert(markerAt, "Titik patch Auto Acc tidak ditemukan")
-source = source:sub(1, markerAt + #autoAccMarker - 1)
-    .. "\nlocal function setAutoAccStatus(_) end"
-    .. source:sub(markerAt + #autoAccMarker)
-
-source = onyxReplaceOnce(source,
-    'setStatus(enabled and "AUTO ACC AKTIF - MENUNGGU PERMINTAAN"\n        or "AUTO ACC NONAKTIF")',
-    'setAutoAccStatus(enabled and "AUTO ACC AKTIF - MENUNGGU PERMINTAAN"\n        or "AUTO ACC NONAKTIF")',
-    "toggle")
-source = onyxReplaceOnce(source,
-    'setStatus("AUTO ACC: " .. item.card.Name\n                        .. " | " .. #cards .. " popup")',
-    'setAutoAccStatus("AUTO ACC: " .. item.card.Name\n                        .. " | " .. #cards .. " popup")',
-    "popup ditemukan")
-source = onyxReplaceOnce(source,
-    'setStatus(gone and "AUTO ACC: popup diproses; scan ulang"\n                        or "AUTO ACC: popup belum hilang; coba ulang")',
-    'setAutoAccStatus(gone and "AUTO ACC: popup diproses; scan ulang"\n                        or "AUTO ACC: popup belum hilang; coba ulang")',
-    "hasil klik")
-source = onyxReplaceOnce(source,
-    'setStatus("AUTO ACC: menunggu permintaan")',
-    'setAutoAccStatus("AUTO ACC: menunggu permintaan")',
-    "menunggu")
-
--- ==========================================
--- ==========================================
--- LAYOUT PATCH - STRICT MATCH (WAJIB BERHASIL)
--- ==========================================
+-- LAYOUT PATCH - MATCH DENGAN SUMBER CORE ASLI
+-- Marker diperiksa terhadap source yang sudah didekode, bukan asumsi nama GUI.
 
 local function onyxReplaceLineStrict(text, prefix, newLine, label)
     local a = text:find(prefix, 1, true)
@@ -650,67 +492,23 @@ local function onyxReplaceLineStrict(text, prefix, newLine, label)
     return text:sub(1, a - 1) .. newLine .. text:sub(e)
 end
 
--- Perbaiki glyph minimize yang sebelumnya berupa karakter kontrol (kotak).
 source = onyxReplaceLineStrict(
-    source, "minimizeButton.Text = ",
-    'minimizeButton.Text = "-"',
-    "MINIMIZE TEXT"
+    source,
+    'title.Text = "RAEL\'S TRICKS V18.2"',
+    'title.Text = "ONYX HUB"',
+    "TITLE TEXT"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'miniButton.Text = "RT"',
+    'miniButton.Text = "O"',
+    "MINI BRAND"
 )
 
--- Semua posisi diatur eksplisit dan setiap perubahan wajib terkonfirmasi.
-source = onyxReplaceLineStrict(
-    source, "statusPanel.Position = ",
-    "statusPanel.Position = UDim2.fromOffset(12, 178)",
-    "STATUS PANEL"
-)
-source = onyxReplaceLineStrict(
-    source, "autoAccButton.Position = ",
-    "autoAccButton.Position = UDim2.fromOffset(12, 226)",
-    "AUTO ACC"
-)
-source = onyxReplaceLineStrict(
-    source, "gachaButton.Position = ",
-    "gachaButton.Position = UDim2.fromOffset(12, 263)",
-    "AUTO GACHA"
-)
-source = onyxReplaceLineStrict(
-    source, "gachaPaidButton.Position = ",
-    "gachaPaidButton.Position = UDim2.fromOffset(12, 298)",
-    "PAID GACHA"
-)
-source = onyxReplaceLineStrict(
-    source, "frame.Size = UDim2.fromOffset(252, 340)",
-    "frame.Size = UDim2.fromOffset(252, 340)",
-    "FRAME HEIGHT"
-)
-
--- Urutan ZIndex eksplisit agar tombol minimize selalu berada di atas header.
-source = onyxReplaceLineStrict(
-    source, "header.Name = \"Header\"",
-    'header.Name = "Header"\nheader.ZIndex = 5',
-    "HEADER ZINDEX"
-)
-source = onyxReplaceLineStrict(
-    source, 'title.Text = "RAEL\'S TRICKS V18.2"',
-    'title.Text = "ONYX HUB"\ntitle.ZIndex = 6',
-    "TITLE ZINDEX"
-)
-source = onyxReplaceLineStrict(
-    source, "minimizeButton.Name = \"MinimizeButton\"",
-    'minimizeButton.Name = "MinimizeButton"\nminimizeButton.ZIndex = 20\nminimizeButton.Active = true\nminimizeButton.AutoButtonColor = true',
-    "MINIMIZE ZINDEX"
-)
-source = onyxReplaceLineStrict(
-    source, "miniButton.Name = \"RaelMiniButton\"",
-    'miniButton.Name = "RaelMiniButton"\nminiButton.ZIndex = 30\nminiButton.Active = true\nminiButton.AutoButtonColor = true',
-    "REOPEN ZINDEX"
-)
-
--- Pastikan event minimize dan reopen terpasang tepat satu kali.
-local minimizeEvent = 'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)'
-local reopenEvent = 'connect(miniButton.Activated, function() miniButton.Visible = false frame.Visible = true end)'
-assert(source:find(minimizeEvent, 1, true), "MINIMIZE EVENT TIDAK DITEMUKAN")
-assert(source:find(reopenEvent, 1, true), "REOPEN EVENT TIDAK DITEMUKAN")
+assert(source:find("connect(minimizeButton.Activated, function()", 1, true),
+    "MINIMIZE EVENT TIDAK DITEMUKAN")
+assert(source:find("connect(miniButton.Activated, function()", 1, true),
+    "REOPEN EVENT TIDAK DITEMUKAN")
 
 -- AUTO JAM AJAIB: ditambahkan ke source core, bukan loader terpisah.
 source = source .. [====[
@@ -1054,7 +852,7 @@ local farmOK, farmError = pcall(function()
 
     local farmGui = playerGui:WaitForChild("RaelFarmFeedConvert", 10)
     assert(farmGui, "GUI FARM TIDAK TERBENTUK")
-    local mainGui = playerGui:FindFirstChild("RaelsTricksV1")
+    local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
     assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
     local scroll = mainGui:FindFirstChild("FeatureScroll", true)
     assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")

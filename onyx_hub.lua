@@ -443,13 +443,13 @@ do
     local panelHeight = math.min(420, math.max(260, viewport.Y - 110))
 
     -- Fit the existing feature controls inside a mobile-safe scrolling viewport.
-    frame.Size = UDim2.fromOffset(252, panelHeight)
-    frame.Position = UDim2.new(1, -266, 0, math.max(12, math.min(95, viewport.Y - panelHeight - 12)))
+    frame.Size = UDim2.fromOffset(318, panelHeight)
+    frame.Position = UDim2.new(1, -330, 0, math.max(12, math.min(95, viewport.Y - panelHeight - 12)))
 
     local contentScroll = Instance.new("ScrollingFrame")
     contentScroll.Name = "FeatureScroll"
-    contentScroll.Position = UDim2.fromOffset(0, 47)
-    contentScroll.Size = UDim2.new(1, 0, 1, -53)
+    contentScroll.Position = UDim2.fromOffset(58, 47)
+    contentScroll.Size = UDim2.new(1, -64, 1, -53)
     contentScroll.BackgroundTransparency = 1
     contentScroll.BorderSizePixel = 0
     contentScroll.ScrollBarThickness = 3
@@ -608,11 +608,12 @@ do
     local rail = Instance.new("Frame")
     rail.Name = "OnyxIconRail"
     rail.Size = UDim2.fromOffset(46, panelHeight)
-    rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 68), 0, frame.Position.Y.Offset)
+    rail.Position = UDim2.fromOffset(7, 47)
+    rail.Size = UDim2.new(0, 44, 1, -55)
     rail.BackgroundColor3 = Color3.fromRGB(10, 15, 26)
     rail.BorderSizePixel = 0
     rail.ZIndex = 40
-    rail.Parent = gui
+    rail.Parent = frame
     Instance.new("UICorner", rail).CornerRadius = UDim.new(0, 12)
 
     local railStroke = Instance.new("UIStroke")
@@ -798,17 +799,34 @@ do
             if farmGui then farmGui:Destroy() end
         end)
         pcall(function() gui:Destroy() end)
-        pcall(function() rail:Destroy() end)
     end)
 
-    -- Keep the icon rail aligned if the viewport changes (rotation/resizing).
-    if camera then
-        connect(camera:GetPropertyChangedSignal("ViewportSize"), function()
-            if not rail.Parent then return end
-            local size = camera.ViewportSize
-            rail.Position = UDim2.new(1, -(frame.AbsoluteSize.X + 68), 0, math.max(12, math.min(95, size.Y - panelHeight - 12)))
-        end)
-    end
+    -- Sidebar is physically part of the main window; drag the whole ONYX GUI from header.
+    local UserInputService = game:GetService("UserInputService")
+    local dragging, dragInput, dragStart, startPosition = false, nil, nil, nil
+    header.Active = true
+    header.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPosition = frame.Position
+            dragInput = input
+            input.Changed:Connect(function()
+                if input.UserInputState == Enum.UserInputState.End then dragging = false end
+            end)
+        end
+    end)
+    UserInputService.InputChanged:Connect(function(input)
+        if dragging and (input.UserInputType == Enum.UserInputType.Touch
+        or input.UserInputType == Enum.UserInputType.MouseMovement) then
+            local delta = input.Position - dragStart
+            frame.Position = UDim2.new(
+                startPosition.X.Scale, startPosition.X.Offset + delta.X,
+                startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+            )
+        end
+    end)
 end
 ]====]
 
@@ -888,6 +906,47 @@ local farmOK, farmError = pcall(function()
     farmClose.Activated:Connect(function()
         farmPanel.Visible = false
     end)
+
+    -- Replace the separate legacy Farm window with its original controls inside ONYX.
+    local farmControls = {
+        farmPanel:FindFirstChild("AutoFarm"),
+        farmPanel:FindFirstChild("AutoFeed"),
+        farmPanel:FindFirstChild("AutoConvert"),
+        farmPanel:FindFirstChildWhichIsA("TextLabel")
+    }
+    local farmControlY = redesignedBottom + 8
+    for _, control in ipairs(farmControls) do
+        if control and control:IsA("GuiObject") then
+            control.Parent = scroll
+            control.Visible = true
+            control.Position = UDim2.fromOffset(12, farmControlY)
+            control.Size = UDim2.new(1, -24, 0, control:IsA("TextLabel") and 18 or 34)
+            control.ZIndex = 6
+            if control:IsA("TextButton") then
+                control.BackgroundColor3 = Color3.fromRGB(24, 48, 62)
+                control.TextColor3 = Color3.fromRGB(230, 244, 250)
+                control.Font = Enum.Font.GothamBold
+                control.TextSize = 11
+                local c = control:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+                c.CornerRadius = UDim.new(0, 8)
+                c.Parent = control
+                local st = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+                st.Color = Color3.fromRGB(47, 88, 105)
+                st.Thickness = 1
+                st.Parent = control
+            else
+                control.Text = "FARM AUTOMATION"
+                control.TextColor3 = Color3.fromRGB(104, 220, 195)
+                control.Font = Enum.Font.GothamBlack
+                control.TextSize = 9
+                control.BackgroundTransparency = 1
+                control.TextXAlignment = Enum.TextXAlignment.Left
+            end
+            farmControlY = farmControlY + control.AbsoluteSize.Y + 7
+        end
+    end
+    farmPanel:Destroy()
+    scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 12)
 
     -- The hidden ScreenGui keeps the original worker lifetime valid.
     farmGui.Enabled = false

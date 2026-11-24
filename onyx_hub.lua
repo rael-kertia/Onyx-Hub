@@ -1119,7 +1119,7 @@ local farmOK, farmError = pcall(function()
             scroll.CanvasPosition = Vector2.new(0, 0)
         end)
         farmShortcut.Activated:Connect(function()
-            frame.Visible = true
+            mainFrame.Visible = true
             scroll.CanvasPosition = Vector2.new(0, farmPanel.Position.Y.Offset)
         end)
     end

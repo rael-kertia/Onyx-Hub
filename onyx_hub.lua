@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix4-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-single-gui-stopall-fix5-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -396,20 +396,35 @@ local exitButton
 do
     -- Core saat ini memakai frame langsung, bukan objek Header terpisah.
     local header = frame
-    minimizeButton.Position = UDim2.new(1, -58, 0, 1)
+    minimizeButton.Position = UDim2.new(1, -94, 0, 2)
     exitButton = Instance.new("TextButton")
     exitButton.Name = "OnyxExitButton"
-    exitButton.Size = UDim2.fromOffset(25, 19)
-    exitButton.Position = UDim2.new(1, -29, 0, 1)
+    exitButton.Size = UDim2.fromOffset(42, 34)
+    exitButton.Position = UDim2.new(1, -46, 0, 1)
     exitButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
     exitButton.BorderSizePixel = 0
     exitButton.Text = "X"
     exitButton.TextColor3 = Color3.new(1, 1, 1)
-    exitButton.TextSize = 12
-    exitButton.Font = Enum.Font.GothamBold
+    exitButton.TextSize = 18
+    exitButton.Font = Enum.Font.GothamBlack
     exitButton.Parent = header
-    Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 5)
+    Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 7)
     connect(exitButton.Activated, function()
+        -- STOP ALL: matikan seluruh worker Farm/Feed/Convert sebelum GUI ditutup.
+        local env = getgenv()
+        env.RFC_Running = false
+        if env.RFC_Connections then
+            for _, connection in ipairs(env.RFC_Connections) do
+                pcall(function() connection:Disconnect() end)
+            end
+            table.clear(env.RFC_Connections)
+        end
+        if env.RFC_Objects then
+            for _, object in ipairs(env.RFC_Objects) do
+                pcall(function() object:Destroy() end)
+            end
+            table.clear(env.RFC_Objects)
+        end
         if gui and gui.Parent then gui:Destroy() end
     end)
 
@@ -695,10 +710,20 @@ chunk()
 -- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
 diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
 local farmOK, farmError = pcall(function()
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-bubble-20261125"
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-single-gui-stopall-fix5-20261125"
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
+    -- Worker tidak lagi bergantung pada ScreenGui Farm terpisah.
+    local oldWorkerLoop = "while alive() and gui.Parent do"
+    local loopCount = select(2, farmSource:gsub(oldWorkerLoop, ""))
+    assert(loopCount == 2, "FARM PATCH: JUMLAH WORKER LOOP BERUBAH")
+    farmSource = farmSource:gsub(oldWorkerLoop, "while alive() do")
+    local oldDestroyHook = [=[connect(gui.Destroying, function()
+    if env.RFC_Session == SESSION then env.RFC_Running = false end
+end)]=]
+    assert(farmSource:find(oldDestroyHook, 1, true), "FARM PATCH: DESTROY HOOK TIDAK DITEMUKAN")
+    farmSource = farmSource:gsub(oldDestroyHook, "-- ScreenGui dikelola wrapper ONYX; worker dikendalikan RFC_Running.")
     local farmChunk, farmCompileError = loadstring(farmSource)
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()
@@ -765,13 +790,9 @@ local farmOK, farmError = pcall(function()
 
     scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 14)
 
-    -- Hapus seluruh tampilan Farm terpisah, tetapi pertahankan ScreenGui
-    -- sebagai penanda hidup bagi loop worker yang memeriksa gui.Parent.
-    for _, child in ipairs(farmGui:GetChildren()) do
-        if child:IsA("GuiObject") then
-            child:Destroy()
-        end
-    end
+    -- Semua kontrol sudah dipindahkan ke FeatureScroll; hapus ScreenGui Farm.
+    -- Worker tetap berjalan melalui env.RFC_Running.
+    farmGui:Destroy()
 
     local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")

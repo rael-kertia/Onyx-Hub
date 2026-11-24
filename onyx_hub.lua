@@ -488,6 +488,122 @@ do
     contentScroll.CanvasSize = UDim2.new(0, 0, 0, maxBottom)
 
 
+    -- ONYX DASHBOARD REDESIGN: new visual hierarchy, hero card, feature cards.
+    frame.BackgroundColor3 = Color3.fromRGB(9, 14, 25)
+    frame.BorderSizePixel = 0
+    local oldStroke = frame:FindFirstChildOfClass("UIStroke")
+    if oldStroke then
+        oldStroke.Color = Color3.fromRGB(42, 65, 88)
+        oldStroke.Thickness = 1.4
+    end
+    local frameGradient = frame:FindFirstChildOfClass("UIGradient")
+    if not frameGradient then
+        frameGradient = Instance.new("UIGradient")
+        frameGradient.Rotation = 90
+        frameGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(17, 29, 47)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 13, 23))
+        })
+        frameGradient.Parent = frame
+    end
+    header.BackgroundColor3 = Color3.fromRGB(13, 23, 37)
+    header.BackgroundTransparency = 0
+    title.Text = "ONYX  /  CONTROL CENTER"
+    title.TextColor3 = Color3.fromRGB(232, 242, 255)
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 13
+
+    local hero = Instance.new("Frame")
+    hero.Name = "OnyxDashboardHero"
+    hero.Size = UDim2.new(1, -24, 0, 72)
+    hero.Position = UDim2.fromOffset(12, 8)
+    hero.BackgroundColor3 = Color3.fromRGB(17, 43, 54)
+    hero.BorderSizePixel = 0
+    hero.ZIndex = 4
+    hero.Parent = contentScroll
+    Instance.new("UICorner", hero).CornerRadius = UDim.new(0, 10)
+    local heroGradient = Instance.new("UIGradient")
+    heroGradient.Rotation = 0
+    heroGradient.Color = ColorSequence.new(Color3.fromRGB(20, 68, 72), Color3.fromRGB(19, 35, 58))
+    heroGradient.Parent = hero
+
+    local heroAccent = Instance.new("Frame")
+    heroAccent.Size = UDim2.fromOffset(3, 44)
+    heroAccent.Position = UDim2.fromOffset(12, 14)
+    heroAccent.BackgroundColor3 = Color3.fromRGB(73, 230, 192)
+    heroAccent.BorderSizePixel = 0
+    heroAccent.ZIndex = 5
+    heroAccent.Parent = hero
+    Instance.new("UICorner", heroAccent).CornerRadius = UDim.new(1, 0)
+
+    local heroTitle = Instance.new("TextLabel")
+    heroTitle.Size = UDim2.new(1, -36, 0, 25)
+    heroTitle.Position = UDim2.fromOffset(23, 12)
+    heroTitle.BackgroundTransparency = 1
+    heroTitle.Text = "WELCOME TO ONYX"
+    heroTitle.TextColor3 = Color3.fromRGB(240, 250, 255)
+    heroTitle.TextSize = 14
+    heroTitle.Font = Enum.Font.GothamBlack
+    heroTitle.TextXAlignment = Enum.TextXAlignment.Left
+    heroTitle.ZIndex = 5
+    heroTitle.Parent = hero
+
+    local heroSub = Instance.new("TextLabel")
+    heroSub.Size = UDim2.new(1, -36, 0, 20)
+    heroSub.Position = UDim2.fromOffset(23, 38)
+    heroSub.BackgroundTransparency = 1
+    heroSub.Text = "AUTOMATION  •  FARM  •  CONTROL"
+    heroSub.TextColor3 = Color3.fromRGB(142, 190, 199)
+    heroSub.TextSize = 9
+    heroSub.Font = Enum.Font.GothamBold
+    heroSub.TextXAlignment = Enum.TextXAlignment.Left
+    heroSub.ZIndex = 5
+    heroSub.Parent = hero
+
+    local section = Instance.new("TextLabel")
+    section.Name = "FeatureSectionLabel"
+    section.Size = UDim2.new(1, -24, 0, 20)
+    section.Position = UDim2.fromOffset(12, 88)
+    section.BackgroundTransparency = 1
+    section.Text = "FEATURE CONTROL"
+    section.TextColor3 = Color3.fromRGB(107, 220, 196)
+    section.TextSize = 9
+    section.Font = Enum.Font.GothamBlack
+    section.TextXAlignment = Enum.TextXAlignment.Left
+    section.ZIndex = 4
+    section.Parent = contentScroll
+
+    local redesignedBottom = 108
+    for _, control in ipairs(contentScroll:GetChildren()) do
+        if control:IsA("GuiObject") and control ~= hero and control ~= section then
+            control.Position = UDim2.new(
+                control.Position.X.Scale, control.Position.X.Offset,
+                control.Position.Y.Scale, control.Position.Y.Offset + 108
+            )
+            if control:IsA("TextButton") then
+                control.Size = UDim2.new(1, -24, 0, math.max(32, control.Size.Y.Offset))
+                control.Position = UDim2.new(0, 12, 0, control.Position.Y.Offset)
+                control.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
+                control.TextColor3 = Color3.fromRGB(225, 239, 250)
+                control.Font = Enum.Font.GothamBold
+                control.TextSize = 11
+                control.ZIndex = 5
+                local corner = control:FindFirstChildOfClass("UICorner")
+                if not corner then
+                    corner = Instance.new("UICorner")
+                    corner.Parent = control
+                end
+                corner.CornerRadius = UDim.new(0, 8)
+                local stroke = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+                stroke.Color = Color3.fromRGB(44, 70, 91)
+                stroke.Thickness = 1
+                stroke.Parent = control
+            end
+            redesignedBottom = math.max(redesignedBottom, control.Position.Y.Offset + control.AbsoluteSize.Y + 10)
+        end
+    end
+    contentScroll.CanvasSize = UDim2.new(0, 0, 0, redesignedBottom + 12)
+
     -- Icon rail stays available while the expandable control panel is hidden.
     local rail = Instance.new("Frame")
     rail.Name = "OnyxIconRail"

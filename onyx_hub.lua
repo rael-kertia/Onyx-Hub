@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix2-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-integrated-fix3-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -648,7 +648,6 @@ do
     end)
 
     -- Hanya satu tombol X, ditempatkan di header utama.
-    assert(exitButton and exitButton.Parent, "TOMBOL EXIT CORE TIDAK DITEMUKAN")
     exitButton.ZIndex = 25
     exitButton.Visible = true
 

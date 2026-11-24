@@ -100,6 +100,23 @@ source = onyxReplaceLineStrict(
 )
 source = onyxReplaceLineStrict(
     source,
+    'miniButton.Parent = gui',
+    [[local onyxRestoreGui = Instance.new("ScreenGui")
+onyxRestoreGui.Name = "OnyxRestoreLauncher"
+onyxRestoreGui.ResetOnSpawn = false
+onyxRestoreGui.DisplayOrder = 10001
+onyxRestoreGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+onyxRestoreGui.Parent = playerGui
+miniButton.Parent = onyxRestoreGui
+gui.Destroying:Connect(function()
+    if onyxRestoreGui and onyxRestoreGui.Parent then
+        onyxRestoreGui:Destroy()
+    end
+end)]],
+    "MINI BUTTON SCREEN GUI TERPISAH"
+)
+source = onyxReplaceLineStrict(
+    source,
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
     'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
     "HIDE LEGACY MINI"
@@ -840,57 +857,6 @@ local chunk, compileError = loadstring(wrapper)
 assert(chunk, "Wrapper compile gagal: " .. tostring(compileError))
 diagnosticStatus("MENJALANKAN CORE...", false)
 chunk()
-
--- RESTORE LAUNCHER TERPISAH: tidak ikut tersembunyi bersama ScreenGui utama.
-local onyxMainGui = playerGui:WaitForChild("RaelsTricksV1", 10)
-assert(onyxMainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN UNTUK RESTORE")
-local onyxMainFrame = onyxMainGui:FindFirstChild("Main")
-assert(onyxMainFrame and onyxMainFrame:IsA("GuiObject"),
-    "FRAME UTAMA ONYX TIDAK DITEMUKAN UNTUK RESTORE")
-
-local oldRestoreGui = playerGui:FindFirstChild("OnyxRestoreLauncher")
-if oldRestoreGui then oldRestoreGui:Destroy() end
-
-local restoreGui = Instance.new("ScreenGui")
-restoreGui.Name = "OnyxRestoreLauncher"
-restoreGui.ResetOnSpawn = false
-restoreGui.IgnoreGuiInset = false
-restoreGui.DisplayOrder = 10001
-restoreGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-restoreGui.Parent = playerGui
-
-local restoreButton = Instance.new("TextButton")
-restoreButton.Name = "RestoreButton"
-restoreButton.Size = UDim2.fromOffset(48, 48)
-restoreButton.Position = UDim2.new(1, -62, 0, 110)
-restoreButton.BackgroundColor3 = Color3.fromRGB(13, 148, 136)
-restoreButton.BorderSizePixel = 0
-restoreButton.Text = "O"
-restoreButton.TextColor3 = Color3.new(1, 1, 1)
-restoreButton.TextSize = 18
-restoreButton.Font = Enum.Font.GothamBlack
-restoreButton.Visible = not onyxMainFrame.Visible
-restoreButton.Active = true
-restoreButton.ZIndex = 10
-restoreButton.Parent = restoreGui
-Instance.new("UICorner", restoreButton).CornerRadius = UDim.new(1, 0)
-
-restoreButton.Activated:Connect(function()
-    if onyxMainFrame and onyxMainFrame.Parent then
-        onyxMainFrame.Visible = true
-        restoreButton.Visible = false
-    end
-end)
-
-onyxMainFrame:GetPropertyChangedSignal("Visible"):Connect(function()
-    if restoreButton and restoreButton.Parent then
-        restoreButton.Visible = not onyxMainFrame.Visible
-    end
-end)
-
-onyxMainGui.Destroying:Connect(function()
-    if restoreGui and restoreGui.Parent then restoreGui:Destroy() end
-end)
 
 -- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
 diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)

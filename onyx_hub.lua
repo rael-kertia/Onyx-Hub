@@ -6,7 +6,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-single-gui-stopall-fix5-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-single-gui-stopall-fix6-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -399,31 +399,50 @@ do
     minimizeButton.Position = UDim2.new(1, -94, 0, 2)
     exitButton = Instance.new("TextButton")
     exitButton.Name = "OnyxExitButton"
-    exitButton.Size = UDim2.fromOffset(42, 34)
-    exitButton.Position = UDim2.new(1, -46, 0, 1)
+    exitButton.Size = UDim2.fromOffset(48, 36)
+    exitButton.Position = UDim2.new(1, -52, 0, 1)
     exitButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
     exitButton.BorderSizePixel = 0
     exitButton.Text = "X"
     exitButton.TextColor3 = Color3.new(1, 1, 1)
-    exitButton.TextSize = 18
+    exitButton.TextSize = 20
     exitButton.Font = Enum.Font.GothamBlack
     exitButton.Parent = header
     Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 7)
     connect(exitButton.Activated, function()
         -- STOP ALL: matikan seluruh worker Farm/Feed/Convert sebelum GUI ditutup.
         local env = getgenv()
+        -- STOP ALL: hentikan seluruh worker dari CORE dan Farm/Feed/Convert.
+        env.ONYX_STOP_ALL = true
+        env.RaelV18Running = false
         env.RFC_Running = false
-        if env.RFC_Connections then
-            for _, connection in ipairs(env.RFC_Connections) do
-                pcall(function() connection:Disconnect() end)
+
+        for _, key in ipairs({"RaelV18Connections", "RFC_Connections"}) do
+            local connections = env[key]
+            if connections then
+                for _, connection in ipairs(connections) do
+                    pcall(function() connection:Disconnect() end)
+                end
+                table.clear(connections)
             end
-            table.clear(env.RFC_Connections)
         end
-        if env.RFC_Objects then
-            for _, object in ipairs(env.RFC_Objects) do
-                pcall(function() object:Destroy() end)
+
+        for _, key in ipairs({"RaelV18Objects", "RFC_Objects"}) do
+            local objects = env[key]
+            if objects then
+                for _, object in ipairs(objects) do
+                    pcall(function() object:Destroy() end)
+                end
+                table.clear(objects)
             end
-            table.clear(env.RFC_Objects)
+        end
+
+        local playerGui = game:GetService("Players").LocalPlayer:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            for _, guiName in ipairs({"RaelsTricksV18", "RaelFarmFeedConvert"}) do
+                local oldGui = playerGui:FindFirstChild(guiName)
+                if oldGui then pcall(function() oldGui:Destroy() end) end
+            end
         end
         if gui and gui.Parent then gui:Destroy() end
     end)
@@ -710,7 +729,7 @@ chunk()
 -- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
 diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
 local farmOK, farmError = pcall(function()
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-single-gui-stopall-fix5-20261125"
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-single-gui-stopall-fix6-20261125"
     local farmSource = game:HttpGet(farmUrl)
     assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
     farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
@@ -792,7 +811,12 @@ end)]=]
 
     -- Semua kontrol sudah dipindahkan ke FeatureScroll; hapus ScreenGui Farm.
     -- Worker tetap berjalan melalui env.RFC_Running.
+    local farmStatus = farmPanel:FindFirstChildWhichIsA("TextLabel")
+    if farmStatus then farmStatus:Destroy() end
+    farmGui.Enabled = false
     farmGui:Destroy()
+    local leftoverFarmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
+    if leftoverFarmGui then leftoverFarmGui:Destroy() end
 
     local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")

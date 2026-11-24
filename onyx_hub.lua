@@ -607,9 +607,8 @@ do
     -- Icon rail stays available while the expandable control panel is hidden.
     local rail = Instance.new("Frame")
     rail.Name = "OnyxIconRail"
-    rail.Size = UDim2.fromOffset(46, panelHeight)
-    rail.Position = UDim2.fromOffset(7, 47)
-    rail.Size = UDim2.new(0, 44, 1, -55)
+    rail.Size = UDim2.new(0, 48, 1, -55)
+    rail.Position = UDim2.fromOffset(6, 47)
     rail.BackgroundColor3 = Color3.fromRGB(10, 15, 26)
     rail.BorderSizePixel = 0
     rail.ZIndex = 40
@@ -800,35 +799,35 @@ do
         pcall(function() gui:Destroy() end)
     end)
 
-    -- Sidebar is physically part of the main window; drag the whole ONYX GUI from header.
+    -- Satu frame memuat sidebar + konten. Drag memindahkan seluruh jendela.
     local UserInputService = game:GetService("UserInputService")
-    local dragging, dragInput, dragStart, startPosition = false, nil, nil, nil
+    local dragging, dragStart, startPosition = false, nil, nil
     local function beginWindowDrag(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPosition = frame.Position
-            dragInput = input
-            input.Changed:Connect(function()
-                if input.UserInputState == Enum.UserInputState.End then dragging = false end
-            end)
-        end
+        if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        dragging = true
+        dragStart = input.Position
+        startPosition = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+    local function updateWindowDrag(input)
+        if not dragging then return end
+        if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPosition.X.Scale, startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+        )
     end
     header.Active = true
     rail.Active = true
     header.InputBegan:Connect(beginWindowDrag)
     rail.InputBegan:Connect(beginWindowDrag)
-    UserInputService.InputChanged:Connect(function(input)
-        if dragging and (input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseMovement) then
-            local delta = input.Position - dragStart
-            frame.Position = UDim2.new(
-                startPosition.X.Scale, startPosition.X.Offset + delta.X,
-                startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
-            )
-        end
-    end)
+    UserInputService.InputChanged:Connect(updateWindowDrag)
+    UserInputService.TouchMoved:Connect(updateWindowDrag)
 end
 ]====]
 
@@ -862,6 +861,7 @@ local farmOK, farmError = pcall(function()
     local farmPanel = farmGui:FindFirstChild("Panel")
     assert(farmPanel, "PANEL FARM TIDAK DITEMUKAN")
 
+    -- Pindahkan kontrol worker ke scroll utama; tidak mempertahankan GUI Farm.
     local bottom = 0
     for _, child in ipairs(scroll:GetChildren()) do
         if child:IsA("GuiObject") then
@@ -869,89 +869,51 @@ local farmOK, farmError = pcall(function()
         end
     end
 
-    farmPanel.Position = UDim2.fromOffset(12, bottom + 14)
-    farmPanel.Size = UDim2.new(1, -24, 0, 174)
-    farmPanel.Parent = scroll
+    local farmSectionY = bottom + 18
+    local farmSection = Instance.new("TextLabel")
+    farmSection.Name = "FarmSectionHeader"
+    farmSection.Size = UDim2.new(1, -24, 0, 20)
+    farmSection.Position = UDim2.fromOffset(12, farmSectionY)
+    farmSection.BackgroundTransparency = 1
+    farmSection.Text = "FARM AUTOMATION"
+    farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
+    farmSection.Font = Enum.Font.GothamBlack
+    farmSection.TextSize = 10
+    farmSection.TextXAlignment = Enum.TextXAlignment.Left
+    farmSection.ZIndex = 6
+    farmSection.Parent = scroll
 
-    local farmTitle = farmPanel:FindFirstChildWhichIsA("TextLabel")
-    if farmTitle then farmTitle.Text = "ONYX // FARM SYSTEM" end
-
-    local oldMinimize = farmPanel:FindFirstChildWhichIsA("TextButton")
-    if oldMinimize then oldMinimize.Visible = true end
-    local oldExit = farmPanel:FindFirstChild("ExitButton")
-    if oldExit then oldExit.Visible = false end
-    local oldMini = farmGui:FindFirstChild("RaelFarmMini")
-    if oldMini then oldMini.Visible = false end
-
-    -- ONYX FARM CARD: visual consistency plus a working hide/reopen control.
-    farmPanel.BackgroundColor3 = Color3.fromRGB(13, 24, 38)
-    farmPanel.BorderSizePixel = 0
-    local farmStroke = farmPanel:FindFirstChildOfClass("UIStroke")
-    if farmStroke then
-        farmStroke.Color = Color3.fromRGB(52, 91, 112)
-        farmStroke.Thickness = 1.2
-    end
-    local farmClose = Instance.new("TextButton")
-    farmClose.Name = "OnyxFarmHide"
-    farmClose.Size = UDim2.fromOffset(24, 22)
-    farmClose.Position = UDim2.new(1, -8, 0, 7)
-    farmClose.AnchorPoint = Vector2.new(1, 0)
-    farmClose.BackgroundColor3 = Color3.fromRGB(115, 42, 52)
-    farmClose.BorderSizePixel = 0
-    farmClose.Text = "×"
-    farmClose.TextColor3 = Color3.new(1, 1, 1)
-    farmClose.TextSize = 16
-    farmClose.Font = Enum.Font.GothamBold
-    farmClose.ZIndex = 8
-    farmClose.Parent = farmPanel
-    Instance.new("UICorner", farmClose).CornerRadius = UDim.new(0, 6)
-    farmClose.Activated:Connect(function()
-        farmPanel.Visible = false
-    end)
-
-    -- Replace the separate legacy Farm window with its original controls inside ONYX.
     local farmControls = {
         farmPanel:FindFirstChild("AutoFarm"),
         farmPanel:FindFirstChild("AutoFeed"),
-        farmPanel:FindFirstChild("AutoConvert"),
-        farmPanel:FindFirstChildWhichIsA("TextLabel")
+        farmPanel:FindFirstChild("AutoConvert")
     }
-    local farmControlY = redesignedBottom + 8
+    local farmControlY = farmSectionY + 26
     for _, control in ipairs(farmControls) do
-        if control and control:IsA("GuiObject") then
-            control.Parent = scroll
-            control.Visible = true
-            control.Position = UDim2.fromOffset(12, farmControlY)
-            control.Size = UDim2.new(1, -24, 0, control:IsA("TextLabel") and 18 or 34)
-            control.ZIndex = 6
-            if control:IsA("TextButton") then
-                control.BackgroundColor3 = Color3.fromRGB(24, 48, 62)
-                control.TextColor3 = Color3.fromRGB(230, 244, 250)
-                control.Font = Enum.Font.GothamBold
-                control.TextSize = 11
-                local c = control:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
-                c.CornerRadius = UDim.new(0, 8)
-                c.Parent = control
-                local st = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-                st.Color = Color3.fromRGB(47, 88, 105)
-                st.Thickness = 1
-                st.Parent = control
-            else
-                control.Text = "FARM AUTOMATION"
-                control.TextColor3 = Color3.fromRGB(104, 220, 195)
-                control.Font = Enum.Font.GothamBlack
-                control.TextSize = 9
-                control.BackgroundTransparency = 1
-                control.TextXAlignment = Enum.TextXAlignment.Left
-            end
-            farmControlY = farmControlY + control.AbsoluteSize.Y + 7
-        end
+        assert(control and control:IsA("GuiObject"), "KONTROL FARM TIDAK LENGKAP")
+        control.Parent = scroll
+        control.Visible = true
+        control.Position = UDim2.fromOffset(12, farmControlY)
+        control.Size = UDim2.new(1, -24, 0, 36)
+        control.ZIndex = 6
+        control.BackgroundColor3 = Color3.fromRGB(24, 48, 62)
+        control.TextColor3 = Color3.fromRGB(230, 244, 250)
+        control.Font = Enum.Font.GothamBold
+        control.TextSize = 11
+        local c = control:FindFirstChildOfClass("UICorner") or Instance.new("UICorner")
+        c.CornerRadius = UDim.new(0, 8)
+        c.Parent = control
+        local st = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+        st.Color = Color3.fromRGB(47, 88, 105)
+        st.Thickness = 1
+        st.Parent = control
+        farmControlY = farmControlY + 43
     end
-    farmPanel:Destroy()
-    scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 12)
 
-    -- The hidden ScreenGui keeps the original worker lifetime valid.
-    farmGui.Enabled = false
+    scroll.CanvasSize = UDim2.new(0, 0, 0, farmControlY + 14)
+
+    -- Buang panel, minimize, X, dan mini launcher Farm. Worker tetap aktif.
+    farmGui:Destroy()
 
     local mainFrame = mainGui:FindFirstChild("Main")
     assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")
@@ -974,20 +936,17 @@ local farmOK, farmError = pcall(function()
             return button
         end
 
-        local homeShortcut = makeShortcut("HomeShortcut", "⌂", 112)
-        local farmShortcut = makeShortcut("FarmShortcut", "♧", 158)
-
+        local homeShortcut = makeShortcut("HomeShortcut", "⌂", 145)
+        local farmShortcut = makeShortcut("FarmShortcut", "♧", 191)
         homeShortcut.Activated:Connect(function()
             mainFrame.Visible = true
             scroll.CanvasPosition = Vector2.new(0, 0)
         end)
         farmShortcut.Activated:Connect(function()
             mainFrame.Visible = true
-            farmPanel.Visible = true
-            scroll.CanvasPosition = Vector2.new(0, farmPanel.Position.Y.Offset)
+            scroll.CanvasPosition = Vector2.new(0, farmSectionY)
         end)
-    end
-end)
+    endend)
 
 if not farmOK then
     diagnosticStatus("FARM INTEGRASI GAGAL: " .. tostring(farmError):sub(1, 140), true)

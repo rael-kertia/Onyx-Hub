@@ -583,8 +583,10 @@ do
         env.ONYX_STOP_ALL = true
         env.RaelV18Running = false
         env.RFC_Running = false
+        env.ONYX_CLEAN_ENABLED = false
+        env.ONYX_CLEAN_RUNNING = false
 
-        for _, key in ipairs({"RaelV18Connections", "RFC_Connections"}) do
+        for _, key in ipairs({"RaelV18Connections", "RFC_Connections", "ONYX_CLEAN_CONNECTIONS"}) do
             local connections = env[key]
             if connections then
                 for _, connection in ipairs(connections) do
@@ -1035,6 +1037,189 @@ end
     assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
     farmChunk()
 
+    -- ONYX AUTO CLEAN: port langsung dari algoritma AUTO CLEANER Rael-Tricks/base.lua.
+    -- Berjalan independen dari Auto Farm/Feed/Convert dan memakai panel Onyx yang sama.
+    local cleanEnv = getgenv()
+    cleanEnv.ONYX_CLEAN_RUNNING = true
+    cleanEnv.ONYX_CLEAN_ENABLED = false
+    cleanEnv.ONYX_CLEAN_CONNECTIONS = cleanEnv.ONYX_CLEAN_CONNECTIONS or {}
+
+    local cleanSection = Instance.new("TextLabel")
+    cleanSection.Name = "CleanSectionHeader"
+    cleanSection.Size = UDim2.new(1, -24, 0, 20)
+    cleanSection.Position = UDim2.fromOffset(12, 266)
+    cleanSection.BackgroundTransparency = 1
+    cleanSection.Text = "AUTO CLEANER"
+    cleanSection.TextColor3 = Color3.fromRGB(104, 220, 195)
+    cleanSection.Font = Enum.Font.GothamBlack
+    cleanSection.TextSize = 10
+    cleanSection.TextXAlignment = Enum.TextXAlignment.Left
+    cleanSection.ZIndex = 20
+    cleanSection.Parent = scroll
+
+    local cleanButton = Instance.new("TextButton")
+    cleanButton.Name = "CleanButton"
+    cleanButton.Size = UDim2.new(1, -24, 0, 36)
+    cleanButton.Position = UDim2.fromOffset(12, 290)
+    cleanButton.BackgroundColor3 = Color3.fromRGB(145, 48, 55)
+    cleanButton.TextColor3 = Color3.new(1, 1, 1)
+    cleanButton.Text = "AUTO CLEAN  [OFF]"
+    cleanButton.TextSize = 11
+    cleanButton.Font = Enum.Font.GothamBold
+    cleanButton.ZIndex = 20
+    cleanButton.Visible = true
+    cleanButton.Active = true
+    cleanButton.AutoButtonColor = true
+    cleanButton.Parent = scroll
+    Instance.new("UICorner", cleanButton).CornerRadius = UDim.new(0, 8)
+    local cleanStroke = Instance.new("UIStroke")
+    cleanStroke.Color = Color3.fromRGB(47, 88, 105)
+    cleanStroke.Thickness = 1
+    cleanStroke.Parent = cleanButton
+
+    local CLEAN_RANGE = 100
+    local TRASH_RANGE = 30
+    local CLEAN_SCAN_DELAY = 0.2
+    local CLEAN_RETRY_DELAY = 1
+    local cleanPrompts = setmetatable({}, {__mode = "k"})
+    local cleanLastAttempt = setmetatable({}, {__mode = "k"})
+
+    local function cleanIsAllowed(prompt)
+        if not prompt or not prompt:IsA("ProximityPrompt") then return false end
+        local action = (prompt.ActionText or ""):lower()
+        local object = (prompt.ObjectText or ""):lower()
+        local name = (prompt.Name or ""):lower()
+        local path = prompt:GetFullName():lower()
+        if action:find("keranjang", 1, true)
+        or object:find("keranjang", 1, true)
+        or name:find("keranjang", 1, true)
+        or path:find("keranjang", 1, true) then
+            return false
+        end
+        return action:find("bersihkan", 1, true) ~= nil
+            or action:find("ambil", 1, true) ~= nil
+            or action:find("buang", 1, true) ~= nil
+    end
+
+    local function cleanAddPrompt(object)
+        if object:IsA("ProximityPrompt") and cleanIsAllowed(object) then
+            cleanPrompts[object] = true
+        end
+    end
+
+    local function cleanPosition(prompt)
+        if not prompt or not prompt.Parent then return nil end
+        local parent = prompt.Parent
+        if parent:IsA("Attachment") then return parent.WorldPosition end
+        if parent:IsA("BasePart") then return parent.Position end
+        local model = parent:IsA("Model") and parent or parent:FindFirstAncestorWhichIsA("Model")
+        if model then
+            local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
+            if part then return part.Position end
+        end
+        local part = parent:FindFirstChildWhichIsA("BasePart", true)
+        return part and part.Position or nil
+    end
+
+    local function cleanCarryingTrash()
+        local character = Players.LocalPlayer.Character
+        local model = character and character:FindFirstChild("Model")
+        local trash = model and model:FindFirstChild("TrashBag")
+        return trash ~= nil and trash:IsA("BasePart")
+    end
+
+    local function cleanIsDroppingPrompt(prompt)
+        if not prompt or not prompt:IsA("ProximityPrompt") then return false end
+        local action = (prompt.ActionText or ""):lower()
+        local object = (prompt.ObjectText or ""):lower()
+        local name = (prompt.Name or ""):lower()
+        return action:find("ambil", 1, true) ~= nil
+            and (object:find("kotoran", 1, true) ~= nil
+                or name:find("ambilkotoran", 1, true) ~= nil)
+    end
+
+    local function cleanActivatePrompt(prompt)
+        if not cleanEnv.ONYX_CLEAN_RUNNING or not prompt
+        or not prompt.Parent or not prompt.Enabled then
+            return false
+        end
+        if typeof(fireproximityprompt) == "function" then
+            local ok = pcall(function() fireproximityprompt(prompt) end)
+            if ok then return true end
+        end
+        local ok = pcall(function()
+            prompt:InputHoldBegin()
+            task.wait(math.max(prompt.HoldDuration, 0.2) + 0.15)
+            prompt:InputHoldEnd()
+        end)
+        return ok
+    end
+
+    local function cleanFindNearest(root)
+        local now = os.clock()
+        local carrying = cleanCarryingTrash()
+        local nearest, shortest = nil, math.huge
+        for prompt in pairs(cleanPrompts) do
+            if prompt.Parent and prompt.Enabled and cleanIsAllowed(prompt) then
+                -- Kotoran kandang ditangani khusus oleh Auto Farm, bukan Auto Clean.
+                if cleanIsDroppingPrompt(prompt) then continue end
+                local action = (prompt.ActionText or ""):lower()
+                local isClean = action:find("bersihkan", 1, true) ~= nil
+                local isTake = action:find("ambil", 1, true) ~= nil
+                local isDrop = action:find("buang", 1, true) ~= nil
+                if isTake and carrying then continue end
+                if isDrop and not carrying then continue end
+                local ready = not cleanLastAttempt[prompt]
+                    or now - cleanLastAttempt[prompt] >= CLEAN_RETRY_DELAY
+                if ready then
+                    local position = cleanPosition(prompt)
+                    local range = isClean and CLEAN_RANGE or TRASH_RANGE
+                    if position then
+                        local distance = (root.Position - position).Magnitude
+                        if distance <= range and distance < shortest then
+                            nearest, shortest = prompt, distance
+                        end
+                    end
+                end
+            end
+        end
+        return nearest
+    end
+
+    for _, object in ipairs(workspace:GetDescendants()) do
+        cleanAddPrompt(object)
+    end
+    local cleanAddedConnection = workspace.DescendantAdded:Connect(function(object)
+        if cleanEnv.ONYX_CLEAN_RUNNING then cleanAddPrompt(object) end
+    end)
+    table.insert(cleanEnv.ONYX_CLEAN_CONNECTIONS, cleanAddedConnection)
+
+    cleanButton.Activated:Connect(function()
+        if not cleanEnv.ONYX_CLEAN_RUNNING then return end
+        cleanEnv.ONYX_CLEAN_ENABLED = not cleanEnv.ONYX_CLEAN_ENABLED
+        local active = cleanEnv.ONYX_CLEAN_ENABLED
+        cleanButton.Text = active and "AUTO CLEAN  [ON]" or "AUTO CLEAN  [OFF]"
+        cleanButton.BackgroundColor3 = active
+            and Color3.fromRGB(35, 145, 70)
+            or Color3.fromRGB(145, 48, 55)
+    end)
+
+    task.spawn(function()
+        while cleanEnv.ONYX_CLEAN_RUNNING and mainGui.Parent do
+            task.wait(CLEAN_SCAN_DELAY)
+            if not cleanEnv.ONYX_CLEAN_ENABLED then continue end
+            local character = Players.LocalPlayer.Character
+            local root = character and character:FindFirstChild("HumanoidRootPart")
+            if not root then continue end
+            local prompt = cleanFindNearest(root)
+            if prompt and cleanEnv.ONYX_CLEAN_ENABLED then
+                cleanLastAttempt[prompt] = os.clock()
+                cleanActivatePrompt(prompt)
+                task.wait(0.1)
+            end
+        end
+    end)
+
     local Players = game:GetService("Players")
     local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
     local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
@@ -1046,13 +1231,14 @@ end
         assert(control and control:IsA("TextButton"), "KONTROL FARM TIDAK TERTANAM: " .. controlName)
     end
 
-    -- Pastikan Auto Clean bawaan core Onyx tampil di panel yang sama.
+    -- Auto Clean dibuat langsung di FeatureScroll Onyx, setelah tiga tombol farm.
     local cleanControl = scroll:FindFirstChild("CleanButton")
-    assert(cleanControl and cleanControl:IsA("TextButton"),
+    assert(cleanControl and cleanControl:IsA("TextButton")
+        and cleanControl.Text:find("AUTO CLEAN", 1, true),
         "AUTO CLEAN TIDAK TERTANAM DI GUI ONYX")
 
-    -- Pastikan tombol X Stop All tetap ada di header Onyx.
-    local stopButton = mainGui:FindFirstChild("OnyxExitButton")
+    -- X berada sebagai anak frame/header Onyx, bukan anak langsung ScreenGui.
+    local stopButton = mainGui:FindFirstChild("OnyxExitButton", true)
     assert(stopButton and stopButton:IsA("TextButton") and stopButton.Text == "X",
         "TOMBOL X STOP ALL ONYX TIDAK DITEMUKAN")
 

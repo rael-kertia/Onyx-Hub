@@ -128,9 +128,11 @@ local cleanInitOK, cleanInitError = pcall(function()
         or path:find("keranjang", 1, true) then
             return false
         end
-        return action:find("bersihkan", 1, true) ~= nil
-            or action:find("ambil", 1, true) ~= nil
-            or action:find("buang", 1, true) ~= nil
+        local isDirt = action:find("bersihkan", 1, true) ~= nil
+        local isLivestockDropping = action:find("ambil", 1, true) ~= nil
+            and (object:find("kotoran", 1, true) ~= nil
+                or name:find("ambilkotoran", 1, true) ~= nil)
+        return isDirt or isLivestockDropping
     end
 
     local function addPrompt(object)
@@ -191,28 +193,22 @@ local cleanInitOK, cleanInitError = pcall(function()
 
     local function findNearest(root)
         local now = os.clock()
-        local carrying = isCarryingTrash()
         local nearest, shortest = nil, math.huge
         for prompt in pairs(prompts) do
             if prompt.Parent and prompt.Enabled and isAllowed(prompt) then
-                -- Kotoran ditangani scanner kandang khusus di bawah.
-                -- Jangan campurkan prompt kotoran dengan alur sampah/keranjang.
+                -- Auto Clean hanya mengurus dirt; TrashBag sepenuhnya milik Homework.
                 if isDroppingPrompt(prompt) then continue end
                 local action = (prompt.ActionText or ""):lower()
-                local isClean = action:find("bersihkan", 1, true) ~= nil
-                local isTake = action:find("ambil", 1, true) ~= nil
-                local isDrop = action:find("buang", 1, true) ~= nil
-                if isTake and carrying then continue end
-                if isDrop and not carrying then continue end
-                local ready = not lastAttempt[prompt]
-                    or now - lastAttempt[prompt] >= RETRY_DELAY
-                if ready then
-                    local position = getPosition(prompt)
-                    local range = isClean and CLEAN_RANGE or TRASH_RANGE
-                    if position then
-                        local distance = (root.Position - position).Magnitude
-                        if distance <= range and distance < shortest then
-                            nearest, shortest = prompt, distance
+                if action:find("bersihkan", 1, true) then
+                    local ready = not lastAttempt[prompt]
+                        or now - lastAttempt[prompt] >= RETRY_DELAY
+                    if ready then
+                        local position = getPosition(prompt)
+                        if position then
+                            local distance = (root.Position - position).Magnitude
+                            if distance <= CLEAN_RANGE and distance < shortest then
+                                nearest, shortest = prompt, distance
+                            end
                         end
                     end
                 end
@@ -287,14 +283,6 @@ local cleanInitOK, cleanInitError = pcall(function()
         while cleanAlive() do
             task.wait(SCAN_DELAY)
             if not env.ONYX_TEST_CLEAN_ENABLED then continue end
-
-            -- Jangan biarkan Auto Clean tambahan mengambil prompt
-            -- saat Homework sedang mengatur batch sampah hingga 6.
-            local homeworkButton = mainGui:FindFirstChild("HomeworkButton", true)
-            if homeworkButton and homeworkButton:IsA("TextButton")
-            and homeworkButton.Text:upper():find("HOMEWORK: ON", 1, true) then
-                continue
-            end
 
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")

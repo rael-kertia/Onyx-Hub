@@ -1071,6 +1071,7 @@ end
     cleanButton.Active = true
     cleanButton.AutoButtonColor = true
     cleanButton.Parent = scroll
+    cleanEnv.ONYX_CLEAN_UI = {button = cleanButton, header = cleanSection, gui = mainGui, scroll = scroll}
     Instance.new("UICorner", cleanButton).CornerRadius = UDim.new(0, 8)
     local cleanStroke = Instance.new("UIStroke")
     cleanStroke.Color = Color3.fromRGB(47, 88, 105)
@@ -1231,11 +1232,26 @@ end
         assert(control and control:IsA("TextButton"), "KONTROL FARM TIDAK TERTANAM: " .. controlName)
     end
 
-    -- Auto Clean dibuat langsung di FeatureScroll Onyx, setelah tiga tombol farm.
-    local cleanControl = scroll:FindFirstChild("CleanButton")
+    -- Pastikan referensi Auto Clean tetap tertanam pada FeatureScroll yang aktif.
+    -- Beberapa versi core mengganti/membungkus ulang panel setelah farmChunk berjalan.
+    local cleanUI = getgenv().ONYX_CLEAN_UI
+    local cleanControl = cleanUI and cleanUI.button
+    if cleanControl and cleanControl:IsA("TextButton") then
+        if cleanControl.Parent ~= scroll then
+            cleanControl.Parent = scroll
+        end
+        cleanControl.Visible = true
+        cleanControl.ZIndex = 100
+    else
+        cleanControl = scroll:FindFirstChild("CleanButton", true)
+    end
     assert(cleanControl and cleanControl:IsA("TextButton")
         and cleanControl.Text:find("AUTO CLEAN", 1, true),
         "AUTO CLEAN TIDAK TERTANAM DI GUI ONYX")
+    if cleanUI then
+        cleanUI.gui = mainGui
+        cleanUI.scroll = scroll
+    end
 
     -- Pastikan tombol X benar-benar ada. Jika patch header core tidak membuatnya,
     -- buat fallback pada frame utama yang menaungi FeatureScroll.

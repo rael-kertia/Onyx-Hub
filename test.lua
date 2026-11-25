@@ -195,24 +195,59 @@ local cleanInitOK, cleanInitError = pcall(function()
         local nearest, shortest = nil, math.huge
         for prompt in pairs(prompts) do
             if prompt.Parent and prompt.Enabled and isAllowed(prompt) then
-                -- Ambil kotoran kandang juga; gunakan cooldown khusus agar
-                -- prompt yang belum hilang tidak dipicu terlalu rapat.
-                local isDropping = isDroppingPrompt(prompt)
+                -- Kotoran ditangani scanner kandang khusus di bawah.
+                -- Jangan campurkan prompt kotoran dengan alur sampah/keranjang.
+                if isDroppingPrompt(prompt) then continue end
                 local action = (prompt.ActionText or ""):lower()
                 local isClean = action:find("bersihkan", 1, true) ~= nil
                 local isTake = action:find("ambil", 1, true) ~= nil
                 local isDrop = action:find("buang", 1, true) ~= nil
                 if isTake and carrying then continue end
                 if isDrop and not carrying then continue end
-                local retryDelay = isDropping and DROPPING_RETRY or RETRY_DELAY
                 local ready = not lastAttempt[prompt]
-                    or now - lastAttempt[prompt] >= retryDelay
+                    or now - lastAttempt[prompt] >= RETRY_DELAY
                 if ready then
                     local position = getPosition(prompt)
                     local range = isClean and CLEAN_RANGE or TRASH_RANGE
                     if position then
                         local distance = (root.Position - position).Magnitude
                         if distance <= range and distance < shortest then
+                            nearest, shortest = prompt, distance
+                        end
+                    end
+                end
+            end
+        end
+        return nearest
+    end
+
+    -- Scanner kotoran dibatasi ke folder kandang milik pemain.
+    -- Ini mencegah prompt kandang/sampah lain mengganggu alur keranjang.
+    local function getDroppingFolder()
+        local kandang = player:GetAttribute("Ternak_Kandang")
+        if typeof(kandang) ~= "string" or not kandang:match("^Kandang_%d+$") then
+            return nil
+        end
+        local farm = workspace:FindFirstChild("TernakLokal")
+        local owner = farm and farm:FindFirstChild("KotoranSaya_" .. kandang)
+        return owner and owner:FindFirstChild("Kotoran")
+    end
+
+    local function findNearestDropping(root)
+        local folder = getDroppingFolder()
+        if not folder then return nil end
+        local nearest, shortest = nil, math.huge
+        local now = os.clock()
+        for _, prompt in ipairs(folder:GetDescendants()) do
+            if prompt:IsA("ProximityPrompt") and prompt.Enabled
+            and isDroppingPrompt(prompt) then
+                local ready = not lastAttempt[prompt]
+                    or now - lastAttempt[prompt] >= DROPPING_RETRY
+                if ready then
+                    local position = getPosition(prompt)
+                    if position then
+                        local distance = (root.Position - position).Magnitude
+                        if distance <= TRASH_RANGE and distance < shortest then
                             nearest, shortest = prompt, distance
                         end
                     end
@@ -256,6 +291,20 @@ local cleanInitOK, cleanInitError = pcall(function()
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not root then continue end
             local prompt = findNearest(root)
+            local droppingPrompt = findNearestDropping(root)
+
+            -- Pilih target kandang hanya dari folder kotoran milik pemain.
+            -- Alur prompt sampah/keranjang tetap memakai perilaku sebelumnya.
+            if droppingPrompt then
+                local droppingPosition = getPosition(droppingPrompt)
+                local normalPosition = getPosition(prompt)
+                if not prompt or (droppingPosition and normalPosition
+                    and (root.Position - droppingPosition).Magnitude
+                    < (root.Position - normalPosition).Magnitude) then
+                    prompt = droppingPrompt
+                end
+            end
+
             if prompt and env.ONYX_TEST_CLEAN_ENABLED then
                 lastAttempt[prompt] = os.clock()
                 activatePrompt(prompt)

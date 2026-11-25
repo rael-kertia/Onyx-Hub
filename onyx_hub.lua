@@ -122,6 +122,152 @@ end)]],
 assert(source:find("connect(miniButton.Activated, function()", 1, true),
     "REOPEN EVENT TIDAK DITEMUKAN")
 
+-- ONYX PORT: RAEL PAID GACHA
+-- Metode service, Promise await, validasi hasil, klaim X10, dan timing
+-- disalin dari implementasi Rael's Tricks yang sudah dipulihkan.
+local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
+    local a = text:find(firstMarker, 1, true)
+    assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
+    local b = text:find(nextMarker, a + #firstMarker, true)
+    assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)
+    return text:sub(1, a - 1) .. replacement .. "\\n\\n" .. text:sub(b)
+end
+
+local onyxGachaNative = [=[
+local gachaService
+local function getGachaService()
+    if gachaService then return gachaService end
+    local rs = game:GetService("ReplicatedStorage")
+    local nk = rs:WaitForChild("NKSystem", 15)
+    if not nk then error("NKSystem tidak ditemukan") end
+    local packages = nk:WaitForChild("Packages", 15)
+    if not packages then error("Packages tidak ditemukan") end
+    local knitModule = packages:WaitForChild("Knit", 15)
+    if not knitModule then error("Knit tidak ditemukan") end
+    local Knit = require(knitModule)
+    gachaService = Knit.GetService("GachaService")
+    if not gachaService then error("GachaService tidak ditemukan") end
+    return gachaService
+end
+
+-- Semua pemanggilan menunggu Promise selesai. Tidak ada retry otomatis.
+local function gachaCall(methodName, ...)
+    local args = table.pack(...)
+    local ok, requestOK, result = pcall(function()
+        local svc = getGachaService()
+        local method = svc[methodName]
+        if type(method) ~= "function" then
+            error("METHOD TIDAK DITEMUKAN: " .. methodName)
+        end
+        local promise = method(svc, table.unpack(args, 1, args.n))
+        if not promise or type(promise.await) ~= "function" then
+            error("RESPONS PROMISE TIDAK VALID: " .. methodName)
+        end
+        return promise:await()
+    end)
+
+    if not ok then return false, tostring(requestOK) end
+    if requestOK ~= true then
+        return false, result or ("SERVER MENOLAK: " .. methodName)
+    end
+    return true, result
+end
+
+-- X10 = satu spin server, lalu klaim tiap indeks secara berurutan.
+-- Jika satu klaim gagal, hentikan; jangan ulangi indeks yang sama.
+local function gachaClaimMulti(results)
+    if type(results) ~= "table" then
+        setStatus("GACHA: HASIL X10 TIDAK VALID")
+        return false
+    end
+
+    local count = #results
+    if count ~= 10 then
+        setStatus("GACHA: JUMLAH HASIL TIDAK 10 (" .. count .. ")")
+        return false
+    end
+
+    for i = 1, count do
+        if results[i] == nil then
+            setStatus("GACHA: HASIL KE-" .. i .. " KOSONG")
+            return false
+        end
+
+        setStatus("GACHA: KLAIM HADIAH " .. i .. "/10")
+        local claimOK, claimResult = gachaCall("ClaimOneMultiReward", i)
+        if not claimOK then
+            setStatus("GACHA: KLAIM GAGAL " .. i .. "/10 - " .. tostring(claimResult))
+            return false
+        end
+
+        -- Jeda presentasi tanpa animasi: mengikuti fase buka X10 di BlindBoxTampil.
+        -- Durasi reveal terukur: 0.75 + 0.55 + 0.50 + 0.45 + 1.60 + 0.30 = 4.15 detik.
+        -- Ini hanya pacing lokal; bukan perlindungan atau jaminan anti-detection.
+        if i < count then
+            task.wait(4.15)
+        end
+    end
+
+    setStatus("GACHA: 10 KLAIM SELESAI")
+    return true
+end
+
+local function gachaCycle()
+    setStatus("GACHA: MEMBACA STATE")
+    local stateOK, state = gachaCall("GetState")
+    if not stateOK or type(state) ~= "table" then
+        setStatus("GACHA: GAGAL MEMBACA STATE")
+        return false
+    end
+
+    local free = tonumber(state.free) or 0
+    if free >= 10 then
+        setStatus("GACHA: FREE X10")
+        local spinOK, result = gachaCall("SpinX10WithFree")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: FREE X10 GAGAL")
+            return false
+        end
+        return gachaClaimMulti(result.results)
+
+    elseif free > 0 then
+        setStatus("GACHA: FREE SPIN 1X")
+        local spinOK, result = gachaCall("Spin")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: FREE SPIN GAGAL")
+            return false
+        end
+
+        local claimOK, claimResult = gachaCall("ClaimReward")
+        if not claimOK then
+            setStatus("GACHA: KLAIM FREE SPIN GAGAL - " .. tostring(claimResult))
+            return false
+        end
+        setStatus("GACHA: FREE SPIN SELESAI")
+        return true
+
+    elseif gachaPaidEnabled then
+        setStatus("GACHA: PAID X10")
+        local spinOK, result = gachaCall("SpinX10WithMoney")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: PAID X10 GAGAL")
+            return false
+        end
+        return gachaClaimMulti(result.results)
+
+    else
+        setStatus("GACHA: MENUNGGU FREE SPIN (PAID OFF)")
+        return nil
+    end
+end]=]
+
+source = onyxReplaceBetween(
+    source,
+    "local function getGachaService()",
+    "local function gachaWorker()",
+    onyxGachaNative
+)
+
 -- AUTO JAM AJAIB: ditambahkan ke source core, bukan loader terpisah.
 source = source .. [====[
 

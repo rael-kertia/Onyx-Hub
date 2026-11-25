@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix13-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 

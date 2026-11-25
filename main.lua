@@ -287,6 +287,15 @@ local cleanInitOK, cleanInitError = pcall(function()
         while cleanAlive() do
             task.wait(SCAN_DELAY)
             if not env.ONYX_TEST_CLEAN_ENABLED then continue end
+
+            -- Jangan biarkan Auto Clean tambahan mengambil prompt
+            -- saat Homework sedang mengatur batch sampah hingga 6.
+            local homeworkButton = mainGui:FindFirstChild("HomeworkButton", true)
+            if homeworkButton and homeworkButton:IsA("TextButton")
+            and homeworkButton.Text:upper():find("HOMEWORK: ON", 1, true) then
+                continue
+            end
+
             local character = player.Character
             local root = character and character:FindFirstChild("HumanoidRootPart")
             if not root then continue end

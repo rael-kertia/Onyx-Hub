@@ -1237,10 +1237,54 @@ end
         and cleanControl.Text:find("AUTO CLEAN", 1, true),
         "AUTO CLEAN TIDAK TERTANAM DI GUI ONYX")
 
-    -- X berada sebagai anak frame/header Onyx, bukan anak langsung ScreenGui.
+    -- Pastikan tombol X benar-benar ada. Jika patch header core tidak membuatnya,
+    -- buat fallback pada frame utama yang menaungi FeatureScroll.
     local stopButton = mainGui:FindFirstChild("OnyxExitButton", true)
-    assert(stopButton and stopButton:IsA("TextButton") and stopButton.Text == "X",
-        "TOMBOL X STOP ALL ONYX TIDAK DITEMUKAN")
+    if not (stopButton and stopButton:IsA("TextButton")) then
+        local windowFrame = scroll
+        while windowFrame and windowFrame.Parent ~= mainGui do
+            windowFrame = windowFrame.Parent
+        end
+        assert(windowFrame and windowFrame:IsA("Frame"),
+            "FRAME UTAMA ONYX TIDAK DITEMUKAN UNTUK TOMBOL X")
+
+        stopButton = Instance.new("TextButton")
+        stopButton.Name = "OnyxExitButton"
+        stopButton.Size = UDim2.fromOffset(26, 24)
+        stopButton.Position = UDim2.new(1, -30, 0, 3)
+        stopButton.AnchorPoint = Vector2.new(0, 0)
+        stopButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
+        stopButton.BorderSizePixel = 0
+        stopButton.Text = "X"
+        stopButton.TextColor3 = Color3.new(1, 1, 1)
+        stopButton.TextSize = 13
+        stopButton.Font = Enum.Font.GothamBlack
+        stopButton.ZIndex = 100
+        stopButton.Parent = windowFrame
+        Instance.new("UICorner", stopButton).CornerRadius = UDim.new(0, 7)
+
+        stopButton.Activated:Connect(function()
+            local env = getgenv()
+            env.ONYX_STOP_ALL = true
+            env.RaelV18Running = false
+            env.RFC_Running = false
+            env.ONYX_CLEAN_ENABLED = false
+            env.ONYX_CLEAN_RUNNING = false
+            for _, key in ipairs({
+                "RaelV18Connections", "RFC_Connections", "ONYX_CLEAN_CONNECTIONS"
+            }) do
+                local connections = env[key]
+                if type(connections) == "table" then
+                    for _, connection in ipairs(connections) do
+                        pcall(function() connection:Disconnect() end)
+                    end
+                    env[key] = {}
+                end
+            end
+            if mainGui and mainGui.Parent then mainGui:Destroy() end
+        end)
+    end
+    assert(stopButton.Text == "X", "TOMBOL X STOP ALL ONYX TIDAK VALID")
 
     assert(not playerGui:FindFirstChild("RaelFarmFeedConvert"), "GUI FARM TERPISAH MASIH ADA")
 

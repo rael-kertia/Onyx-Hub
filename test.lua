@@ -112,6 +112,7 @@ local cleanInitOK, cleanInitError = pcall(function()
     local TRASH_RANGE = 30
     local SCAN_DELAY = 0.2
     local RETRY_DELAY = 1
+    local DROPPING_RETRY = 2
     local prompts = setmetatable({}, {__mode = "k"})
     local lastAttempt = setmetatable({}, {__mode = "k"})
 
@@ -194,16 +195,18 @@ local cleanInitOK, cleanInitError = pcall(function()
         local nearest, shortest = nil, math.huge
         for prompt in pairs(prompts) do
             if prompt.Parent and prompt.Enabled and isAllowed(prompt) then
-                -- Kotoran kandang tetap dikecualikan; itu bukan target cleaner.
-                if isDroppingPrompt(prompt) then continue end
+                -- Ambil kotoran kandang juga; gunakan cooldown khusus agar
+                -- prompt yang belum hilang tidak dipicu terlalu rapat.
+                local isDropping = isDroppingPrompt(prompt)
                 local action = (prompt.ActionText or ""):lower()
                 local isClean = action:find("bersihkan", 1, true) ~= nil
                 local isTake = action:find("ambil", 1, true) ~= nil
                 local isDrop = action:find("buang", 1, true) ~= nil
                 if isTake and carrying then continue end
                 if isDrop and not carrying then continue end
+                local retryDelay = isDropping and DROPPING_RETRY or RETRY_DELAY
                 local ready = not lastAttempt[prompt]
-                    or now - lastAttempt[prompt] >= RETRY_DELAY
+                    or now - lastAttempt[prompt] >= retryDelay
                 if ready then
                     local position = getPosition(prompt)
                     local range = isClean and CLEAN_RANGE or TRASH_RANGE

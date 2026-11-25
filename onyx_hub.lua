@@ -130,7 +130,7 @@ local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
     assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
     local b = text:find(nextMarker, a + #firstMarker, true)
     assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)
-    return text:sub(1, a - 1) .. replacement .. "\\n\\n" .. text:sub(b)
+    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
 end
 
 local onyxGachaNative = [=[

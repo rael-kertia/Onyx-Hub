@@ -1234,24 +1234,19 @@ end
 
     -- Pastikan referensi Auto Clean tetap tertanam pada FeatureScroll yang aktif.
     -- Beberapa versi core mengganti/membungkus ulang panel setelah farmChunk berjalan.
-    local cleanUI = getgenv().ONYX_CLEAN_UI
-    local cleanControl = cleanUI and cleanUI.button
-    if cleanControl and cleanControl:IsA("TextButton") then
-        if cleanControl.Parent ~= scroll then
-            cleanControl.Parent = scroll
-        end
-        cleanControl.Visible = true
-        cleanControl.ZIndex = 100
-    else
-        cleanControl = scroll:FindFirstChild("CleanButton", true)
+    -- Gunakan referensi lokal tombol yang baru dibuat pada sesi integrasi ini.
+    -- Jangan bergantung pada getgenv() untuk memvalidasi Instance UI.
+    local cleanControl = cleanButton
+    assert(cleanControl and cleanControl:IsA("TextButton"),
+        "AUTO CLEAN BUTTON GAGAL DIBUAT")
+    if cleanControl.Parent ~= scroll then
+        cleanControl.Parent = scroll
     end
-    assert(cleanControl and cleanControl:IsA("TextButton")
+    cleanControl.Visible = true
+    cleanControl.ZIndex = 100
+    assert(cleanControl.Parent == scroll
         and cleanControl.Text:find("AUTO CLEAN", 1, true),
         "AUTO CLEAN TIDAK TERTANAM DI GUI ONYX")
-    if cleanUI then
-        cleanUI.gui = mainGui
-        cleanUI.scroll = scroll
-    end
 
     -- Pastikan tombol X benar-benar ada. Jika patch header core tidak membuatnya,
     -- buat fallback pada frame utama yang menaungi FeatureScroll.

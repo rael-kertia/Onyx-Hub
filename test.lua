@@ -1,1427 +1,1153 @@
--- ==========================================
--- ONYX HUB // TEST + HOMEWORK
--- AUTO CLEANER + AUTO FARM + HOMEWORK
--- HOMEWORK TERPISAH DARI AUTO CLEAN
--- HOMEWORK PRIORITY OVER AUTO FARM
--- ==========================================
-
-local Players = game:GetService("Players")
-local UIS = game:GetService("UserInputService")
-local VirtualUser = game:GetService("VirtualUser")
-
-local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
-local backpack = player:WaitForChild("Backpack")
-local env = getgenv()
-local W = workspace
-
--- CLEAN PREVIOUS VERSION
-if env.RaelV18Connections then
-    for _, c in ipairs(env.RaelV18Connections) do
-        pcall(function() c:Disconnect() end)
+-- ONYX HUB // TEST BUILD
+-- Full Onyx interface + native Auto Clean + Rael-Tricks Farm/Feed/Convert
+-- This test entry keeps all existing production Lua files unchanged.
+-- Loader diagnostics are intentionally silent; no status UI is shown.
+local function diagnosticStatus(message, failed)
+    if failed then
+        local report = "ONYX FIX13: " .. tostring(message)
+        pcall(function() if setclipboard then setclipboard(report) end end)
+        pcall(function() warn(report) end)
     end
 end
-if env.RaelV18Objects then
-    for _, obj in ipairs(env.RaelV18Objects) do
-        pcall(function() obj:Destroy() end)
-    end
+local diagnosticGui = nil
+
+local function bootOnyxHub()
+diagnosticStatus("MENGAMBIL CORE...", false)
+
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
+local response = game:HttpGet(url)
+assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
+
+local encoded = response:match("local encoded = %[%[(.-)%]%]")
+assert(encoded, "Data core tidak ditemukan")
+encoded = encoded:gsub("%s", "")
+
+local decoded = {}
+for i = 1, #encoded, 2 do
+    local byte = tonumber(encoded:sub(i, i + 1), 16)
+    assert(byte, "Data core rusak")
+    decoded[#decoded + 1] = string.char((byte - 97) % 256)
+end
+local wrapper = table.concat(decoded)
+diagnosticStatus("CORE TERUNDUH - MENYIAPKAN PATCH...", false)
+
+-- Patch dilakukan setelah seluruh patch asli CORE RESTORE,
+-- tepat sebelum core asli di-compile dan dijalankan.
+local marker = "local compiled, compileError = loadstring(source)"
+local at = wrapper:find(marker, 1, true)
+assert(at, "Titik patch core ONYX tidak ditemukan")
+
+local patch = [==[
+
+
+-- LAYOUT PATCH - MATCH DENGAN CORE RESTORE
+-- Semua marker di bawah dicocokkan dengan guiCode yang dibentuk main_obfuscated.lua.
+
+local function onyxReplaceLineStrict(text, prefix, newLine, label)
+    local a = text:find(prefix, 1, true)
+    assert(a, "LAYOUT PATCH GAGAL: baris tidak ditemukan: " .. label)
+    local e = text:find("\n", a, true) or (#text + 1)
+    assert(not text:find(prefix, e + 1, true),
+        "LAYOUT PATCH GAGAL: baris duplikat: " .. label)
+    return text:sub(1, a - 1) .. newLine .. text:sub(e)
 end
 
-env.RaelV18Running = false
-task.wait(0.15)
-env.RaelV18Running = true
-
-local SESSION = tick()
-env.RaelV18Session = SESSION
-env.RaelV18Connections = {}
-env.RaelV18Objects = {}
-
-local function alive()
-    return env.RaelV18Running and env.RaelV18Session == SESSION
-end
-
-local function connect(signal, callback)
-    local c = signal:Connect(callback)
-    table.insert(env.RaelV18Connections, c)
-    return c
-end
-
-local function track(object)
-    table.insert(env.RaelV18Objects, object)
-    return object
-end
-
--- SETTINGS
-local RANGE_CLEAN = 100
-local RANGE_TRASH = 30
-local SCAN_DELAY = 0.2
-local RETRY_DELAY = 1
-local DROPPING_RETRY = 2
-local FEED_RETRY = 8
-
-local enabled = false
-local autoFarm = false
-local homeworkEnabled = false
-local homeworkBusy = false
-local busy = false
-
-local prompts = setmetatable({}, {__mode = "k"})
-local lastAttempt = setmetatable({}, {__mode = "k"})
-local collectCooldown = {}
-local feedCooldown = {}
-
--- ==========================================
--- DYNAMIC KANDANG
--- ==========================================
-
-local function getCurrentKandang()
-    local name = player:GetAttribute("Ternak_Kandang")
-    if typeof(name) ~= "string" then return nil end
-    if not name:match("^Kandang_%d+$") then return nil end
-    return name
-end
-
-local function getKandangNumber()
-    local name = getCurrentKandang()
-    return name and name:match("Kandang_(%d+)")
-end
-
-local function getCurrentPen()
-    local kandang = getCurrentKandang()
-    if not kandang then return nil end
-
-    local kawasan = W:FindFirstChild("Kawasan_Kos")
-    local ternak = kawasan and kawasan:FindFirstChild("Lahan_Ternak")
-    return ternak and ternak:FindFirstChild(kandang)
-end
-
-local function getDroppingFolder()
-    local kandang = getCurrentKandang()
-    if not kandang then return nil end
-
-    local farm = W:FindFirstChild("TernakLokal")
-    local owner = farm and farm:FindFirstChild("KotoranSaya_" .. kandang)
-    return owner and owner:FindFirstChild("Kotoran")
-end
-
--- ==========================================
--- PROMPT FILTER
--- ==========================================
-
-local function isDroppingPrompt(prompt)
-    if not prompt or not prompt:IsA("ProximityPrompt") then
-        return false
-    end
-
-    local action = (prompt.ActionText or ""):lower()
-    local object = (prompt.ObjectText or ""):lower()
-    local name = (prompt.Name or ""):lower()
-
-    return action:find("ambil", 1, true) ~= nil
-        and (
-            object:find("kotoran", 1, true) ~= nil
-            or name:find("ambilkotoran", 1, true) ~= nil
-        )
-end
-
-local function isAllowed(prompt)
-    if not prompt or not prompt:IsA("ProximityPrompt") then
-        return false
-    end
-
-    local action = (prompt.ActionText or ""):lower()
-    local object = (prompt.ObjectText or ""):lower()
-    local name = (prompt.Name or ""):lower()
-    local path = prompt:GetFullName():lower()
-
-    if action:find("keranjang", 1, true)
-    or object:find("keranjang", 1, true)
-    or name:find("keranjang", 1, true)
-    or path:find("keranjang", 1, true) then
-        return false
-    end
-
-    return action:find("bersihkan", 1, true)
-        or action:find("ambil", 1, true)
-        or action:find("buang", 1, true)
-end
-
-local function addPrompt(obj)
-    if obj:IsA("ProximityPrompt") and isAllowed(obj) then
-        prompts[obj] = true
-    end
-end
-
--- ==========================================
--- POSITION
--- ==========================================
-
-local function getPosition(prompt)
-    if not prompt or not prompt.Parent then return nil end
-
-    local parent = prompt.Parent
-
-    if parent:IsA("Attachment") then
-        return parent.WorldPosition
-    end
-
-    if parent:IsA("BasePart") then
-        return parent.Position
-    end
-
-    local model = parent:IsA("Model")
-        and parent
-        or parent:FindFirstAncestorWhichIsA("Model")
-
-    if model then
-        local part = model.PrimaryPart
-            or model:FindFirstChildWhichIsA("BasePart", true)
-        if part then return part.Position end
-    end
-
-    local part = parent:FindFirstChildWhichIsA("BasePart", true)
-    return part and part.Position
-end
-
-local function getObjectPosition(obj)
-    if not obj then return nil end
-    if obj:IsA("BasePart") then return obj.Position end
-
-    if obj:IsA("Model") then
-        local ok, pivot = pcall(function()
-            return obj:GetPivot()
-        end)
-        if ok then return pivot.Position end
-    end
-
-    local part = obj:FindFirstChildWhichIsA("BasePart", true)
-    return part and part.Position
-end
-
--- ==========================================
--- TRASHBAG - AUTO CLEAN/FARM LAMA
--- ==========================================
-
-local function isCarryingTrash()
-    local character = player.Character
-    local model = character and character:FindFirstChild("Model")
-    local trash = model and model:FindFirstChild("TrashBag")
-    return trash ~= nil and trash:IsA("BasePart")
-end
-
--- ==========================================
--- TELEPORT + PROMPT LAMA
--- ==========================================
-
-local function teleportNear(position, distance)
-    if not alive() then return false end
-
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    if not root or not position then return false end
-
-    local target = position + Vector3.new(0, 1.5, distance or 2)
-    root.CFrame = CFrame.lookAt(target, position)
-    task.wait(0.4)
-
-    return alive()
-end
-
-local function activatePrompt(prompt)
-    if not alive() or not prompt
-    or not prompt.Parent or not prompt.Enabled then
-        return false, "PROMPT TIDAK AKTIF"
-    end
-
-    if typeof(fireproximityprompt) == "function" then
-        local ok = pcall(function()
-            fireproximityprompt(prompt)
-        end)
-
-        if ok then
-            return true, "FIREPROXIMITYPROMPT"
-        end
-    end
-
-    local ok = pcall(function()
-        prompt:InputHoldBegin()
-        task.wait(math.max(prompt.HoldDuration, 0.2) + 0.15)
-        prompt:InputHoldEnd()
-    end)
-
-    if ok then
-        return true, "INPUT HOLD"
-    end
-
-    return false, "INTERAKSI GAGAL"
-end
-
--- ==========================================
--- GUI
--- ==========================================
-
-local oldGui = playerGui:FindFirstChild("OnyxTestHub")
-if oldGui then oldGui:Destroy() end
-
-local gui = track(Instance.new("ScreenGui"))
-gui.Name = "OnyxTestHub"
-gui.ResetOnSpawn = false
-gui.DisplayOrder = 999
-gui.Parent = playerGui
-
-local frame = Instance.new("Frame")
-frame.Size = UDim2.fromOffset(205, 115)
-frame.Position = UDim2.new(1, -220, 0, 100)
-frame.BackgroundColor3 = Color3.fromRGB(25, 25, 30)
-frame.BorderSizePixel = 0
-frame.Active = true
-frame.Parent = gui
-Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 8)
-
-local title = Instance.new("TextLabel")
-title.Size = UDim2.new(1, -38, 0, 20)
-title.Position = UDim2.fromOffset(5, 0)
-title.BackgroundTransparency = 1
-title.Text = "ONYX HUB // TEST"
-title.TextColor3 = Color3.new(1, 1, 1)
-title.TextSize = 11
-title.Font = Enum.Font.GothamBold
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.Parent = frame
-
-local minimizeButton = Instance.new("TextButton")
-minimizeButton.Name = "MinimizeButton"
-minimizeButton.Size = UDim2.fromOffset(25, 19)
-minimizeButton.Position = UDim2.new(1, -29, 0, 1)
-minimizeButton.BackgroundColor3 = Color3.fromRGB(65, 65, 75)
-minimizeButton.Text = "-"
-minimizeButton.TextColor3 = Color3.new(1, 1, 1)
-minimizeButton.TextSize = 16
-minimizeButton.Font = Enum.Font.GothamBold
-minimizeButton.Parent = frame
-Instance.new("UICorner", minimizeButton).CornerRadius = UDim.new(0, 5)
-
-local miniButton = Instance.new("TextButton")
-miniButton.Name = "OnyxMiniButton"
-miniButton.Size = UDim2.fromOffset(42, 42)
-miniButton.Position = UDim2.new(1, -55, 0, 100)
-miniButton.BackgroundColor3 = Color3.fromRGB(35, 100, 65)
+source = onyxReplaceLineStrict(
+    source,
+    'title.Text = "RAEL\'S TRICKS"',
+    'title.Text = "ONYX HUB"',
+    "TITLE TEXT"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'local oldGui = playerGui:FindFirstChild("RaelsTricksV1")',
+    'local oldGui = playerGui:FindFirstChild("RaelsTricksV18")',
+    "GUI CLEANUP NAME"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'gui.Name = "RaelsTricksV1"',
+    'gui.Name = "RaelsTricksV18"',
+    "GUI ROOT NAME"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'title.Size = UDim2.new(1, -48, 0, 21)',
+    'title.Size = UDim2.new(1, -105, 0, 21)',
+    "TITLE WIDTH"
+)
+source = onyxReplaceLineStrict(
+    source,
+    "minimizeButton.Text =",
+    'minimizeButton.Text = "-"',
+    "MINIMIZE GLYPH"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'miniButton.Text = "RT"',
+    'miniButton.Text = "ONYX"',
+    "MINI BRAND"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'miniButton.Parent = gui',
+    'miniButton.Parent = gui',
+    "KEEP LEGACY MINI IN MAIN GUI"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'miniButton.Text = "ONYX"',
+    'miniButton.Text = "ONYX"',
+    "KEEP ONYX MINI LABEL"
+)
+source = onyxReplaceLineStrict(
+    source,
+    'connect(minimizeButton.Activated, function() frame.Visible = false miniButton.Visible = true end)',
+    [[miniButton.Size = UDim2.fromOffset(58, 58)
 miniButton.Text = "ONYX"
-miniButton.TextColor3 = Color3.new(1, 1, 1)
-miniButton.TextSize = 15
-miniButton.Font = Enum.Font.GothamBold
+miniButton.TextSize = 10
+miniButton.Font = Enum.Font.GothamBlack
+miniButton.BackgroundColor3 = Color3.fromRGB(13, 148, 136)
 miniButton.Visible = false
-miniButton.Active = true
-miniButton.Parent = gui
-Instance.new("UICorner", miniButton).CornerRadius = UDim.new(1, 0)
-
-local function makeButton(name, text, x, y, w, color, h)
-    local b = Instance.new("TextButton")
-    b.Name = name
-    b.Size = UDim2.fromOffset(w, h or 29)
-    b.Position = UDim2.fromOffset(x, y)
-    b.BackgroundColor3 = color
-    b.TextColor3 = Color3.new(1, 1, 1)
-    b.TextSize = 10
-    b.Font = Enum.Font.GothamBold
-    b.Text = text
-    b.Parent = frame
-    Instance.new("UICorner", b).CornerRadius = UDim.new(0, 6)
-    return b
-end
-
-local cleanButton = makeButton(
-    "CleanButton", "CLEAN: OFF", 5, 22, 95,
-    Color3.fromRGB(160, 45, 45)
-)
-
-local farmButton = makeButton(
-    "FarmButton", "FARM: OFF", 105, 22, 95,
-    Color3.fromRGB(35, 100, 65)
-)
-
-local homeworkButton = makeButton(
-    "HomeworkButton", "HOMEWORK: OFF", 5, 55, 195,
-    Color3.fromRGB(35, 75, 145), 27
-)
-
-local status = Instance.new("TextLabel")
-status.Size = UDim2.new(1, -10, 0, 20)
-status.Position = UDim2.fromOffset(5, 88)
-status.BackgroundTransparency = 1
-status.Text = "Status: READY"
-status.TextColor3 = Color3.fromRGB(255, 220, 120)
-status.TextSize = 10
-status.Font = Enum.Font.Gotham
-status.TextXAlignment = Enum.TextXAlignment.Left
-status.Parent = frame
-
-local function setStatus(msg)
-    if status and status.Parent then
-        status.Text = "Status: " .. msg
-    end
-end
-
-local function updateButtons()
-    cleanButton.Text = enabled and "CLEAN: ON" or "CLEAN: OFF"
-    cleanButton.BackgroundColor3 = enabled
-        and Color3.fromRGB(35, 145, 70)
-        or Color3.fromRGB(160, 45, 45)
-
-    farmButton.Text = autoFarm and "FARM: ON" or "FARM: OFF"
-    farmButton.BackgroundColor3 = autoFarm
-        and Color3.fromRGB(35, 145, 70)
-        or Color3.fromRGB(35, 100, 65)
-
-    homeworkButton.Text = homeworkEnabled
-        and "HOMEWORK: ON" or "HOMEWORK: OFF"
-    homeworkButton.BackgroundColor3 = homeworkEnabled
-        and Color3.fromRGB(35, 145, 70)
-        or Color3.fromRGB(35, 75, 145)
-end
-
--- ==========================================
--- DRAG
--- ==========================================
-
-local function makeDraggable(object)
-    local dragging = false
-    local dragStart
-    local startPosition
-
-    connect(object.InputBegan, function(input)
-        if input.UserInputType == Enum.UserInputType.Touch
-        or input.UserInputType == Enum.UserInputType.MouseButton1 then
-            dragging = true
-            dragStart = input.Position
-            startPosition = object.Position
-
-            connect(input.Changed, function()
-                if input.UserInputState == Enum.UserInputState.End then
-                    dragging = false
-                end
-            end)
-        end
-    end)
-
-    connect(UIS.InputChanged, function(input)
-        if dragging and (
-            input.UserInputType == Enum.UserInputType.Touch
-            or input.UserInputType == Enum.UserInputType.MouseMovement
-        ) then
-            local delta = input.Position - dragStart
-            object.Position = UDim2.new(
-                startPosition.X.Scale,
-                startPosition.X.Offset + delta.X,
-                startPosition.Y.Scale,
-                startPosition.Y.Offset + delta.Y
-            )
-        end
-    end)
-end
-
-makeDraggable(frame)
-makeDraggable(miniButton)
-
-connect(minimizeButton.MouseButton1Click, function()
+connect(minimizeButton.Activated, function()
     frame.Visible = false
     miniButton.Visible = true
 end)
-
-connect(miniButton.MouseButton1Click, function()
+connect(miniButton.Activated, function()
     miniButton.Visible = false
     frame.Visible = true
-end)
+end)]],
+    "MINIMIZE TO ONYX BUBBLE"
+)
 
--- ==========================================
--- HOMEWORK SYSTEM
--- ==========================================
+-- Core GUI memakai frame langsung; tidak ada objek Header terpisah.
+assert(source:find("connect(miniButton.Activated, function()", 1, true),
+    "REOPEN EVENT TIDAK DITEMUKAN")
 
-local function hwRoot()
-    local c = player.Character
-    return c and c:FindFirstChild("HumanoidRootPart")
+-- ONYX PORT: RAEL PAID GACHA
+-- Metode service, Promise await, validasi hasil, klaim X10, dan timing
+-- disalin dari implementasi Rael's Tricks yang sudah dipulihkan.
+local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
+    local a = text:find(firstMarker, 1, true)
+    assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
+    local b = text:find(nextMarker, a + #firstMarker, true)
+    assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)
+    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
 end
 
--- HOMEWORK memakai deteksi recursive sendiri.
--- Deteksi TrashBag AUTO CLEAN lama tidak diubah.
-local function hwCarrying()
-    local c = player.Character
-    return c and c:FindFirstChild("TrashBag", true)
+local onyxGachaNative = [=[
+local gachaService
+local function getGachaService()
+    if gachaService then return gachaService end
+    local rs = game:GetService("ReplicatedStorage")
+    local nk = rs:WaitForChild("NKSystem", 15)
+    if not nk then error("NKSystem tidak ditemukan") end
+    local packages = nk:WaitForChild("Packages", 15)
+    if not packages then error("Packages tidak ditemukan") end
+    local knitModule = packages:WaitForChild("Knit", 15)
+    if not knitModule then error("Knit tidak ditemukan") end
+    local Knit = require(knitModule)
+    gachaService = Knit.GetService("GachaService")
+    if not gachaService then error("GachaService tidak ditemukan") end
+    return gachaService
 end
 
-local function hwPart(prompt)
-    local x = prompt and prompt.Parent
-    if not x then return nil end
-
-    if x:IsA("BasePart") then
-        return x
-    end
-
-    return x:FindFirstChildWhichIsA("BasePart", true)
-end
-
-local function hwMove(prompt)
-    if not alive() or not homeworkEnabled then return false end
-
-    local r = hwRoot()
-    local q = hwPart(prompt)
-
-    if not r or not q then return false end
-
-    r.CFrame = CFrame.new(
-        q.Position + Vector3.new(0, 1.5, 0)
-    )
-
-    task.wait(0.3)
-    return alive() and homeworkEnabled
-end
-
-local function hwUse(prompt)
-    if not prompt or not prompt.Parent or not prompt.Enabled then
-        return false
-    end
-
-    if not hwMove(prompt) then return false end
-
-    local ok = pcall(function()
-        fireproximityprompt(prompt, prompt.HoldDuration)
+-- Semua pemanggilan menunggu Promise selesai. Tidak ada retry otomatis.
+local function gachaCall(methodName, ...)
+    local args = table.pack(...)
+    local ok, requestOK, result = pcall(function()
+        local svc = getGachaService()
+        local method = svc[methodName]
+        if type(method) ~= "function" then
+            error("METHOD TIDAK DITEMUKAN: " .. methodName)
+        end
+        local promise = method(svc, table.unpack(args, 1, args.n))
+        if not promise or type(promise.await) ~= "function" then
+            error("RESPONS PROMISE TIDAK VALID: " .. methodName)
+        end
+        return promise:await()
     end)
 
-    if not ok then return false end
-
-    task.wait(0.4)
-    return alive() and homeworkEnabled
+    if not ok then return false, tostring(requestOK) end
+    if requestOK ~= true then
+        return false, result or ("SERVER MENOLAK: " .. methodName)
+    end
+    return true, result
 end
 
-local function hwWaitCarry(value)
-    for i = 1, 40 do
-        if not alive() or not homeworkEnabled then return false end
-
-        if (hwCarrying() ~= nil) == value then
-            return true
-        end
-
-        task.wait(0.25)
-    end
-
-    return false
-end
-
-local function hwDispose()
-    if not hwCarrying() then return true end
-
-    local r = hwRoot()
-    if not r then return false end
-
-    local best, bd
-
-    for _, v in ipairs(W:GetDescendants()) do
-        if not alive() or not homeworkEnabled then return false end
-
-        if v:IsA("ProximityPrompt")
-        and v.Name == "BuangPrompt"
-        and v.ActionText == "Buang"
-        and v.Enabled then
-            local q = hwPart(v)
-
-            if q then
-                local d = (r.Position - q.Position).Magnitude
-
-                if not bd or d < bd then
-                    best, bd = v, d
-                end
-            end
-        end
-    end
-
-    if not best or not hwUse(best) then
+-- X10 = satu spin server, lalu klaim tiap indeks secara berurutan.
+-- Jika satu klaim gagal, hentikan; jangan ulangi indeks yang sama.
+local function gachaClaimMulti(results)
+    if type(results) ~= "table" then
+        setStatus("GACHA: HASIL X10 TIDAK VALID")
         return false
     end
 
-    return hwWaitCarry(false)
-end
+    local count = #results
+    if count ~= 10 then
+        setStatus("GACHA: JUMLAH HASIL TIDAK 10 (" .. count .. ")")
+        return false
+    end
 
-local function hwGet(house, mode)
-    local result = {}
+    for i = 1, count do
+        if results[i] == nil then
+            setStatus("GACHA: HASIL KE-" .. i .. " KOSONG")
+            return false
+        end
 
-    if not house then return result end
+        setStatus("GACHA: KLAIM HADIAH " .. i .. "/10")
+        local claimOK, claimResult = gachaCall("ClaimOneMultiReward", i)
+        if not claimOK then
+            setStatus("GACHA: KLAIM GAGAL " .. i .. "/10 - " .. tostring(claimResult))
+            return false
+        end
 
-    for _, v in ipairs(house:GetDescendants()) do
-        if mode == 1
-        and v:IsA("ProximityPrompt")
-        and v.ActionText == "Bersihkan"
-        and v.Enabled then
-            table.insert(result, v)
-
-        elseif mode == 2
-        and v:IsA("BasePart")
-        and v.Name == "TrashBag" then
-            local p = v:FindFirstChild("AmbilPrompt")
-
-            if p and p:IsA("ProximityPrompt") and p.Enabled then
-                table.insert(result, p)
-            end
+        -- Jeda presentasi tanpa animasi: mengikuti fase buka X10 di BlindBoxTampil.
+        -- Durasi reveal terukur: 0.75 + 0.55 + 0.50 + 0.45 + 1.60 + 0.30 = 4.15 detik.
+        -- Ini hanya pacing lokal; bukan perlindungan atau jaminan anti-detection.
+        if i < count then
+            task.wait(4.15)
         end
     end
 
-    return result
+    setStatus("GACHA: 10 KLAIM SELESAI")
+    return true
 end
 
-local function hwFindHouse()
-    local folder = W:FindFirstChild("KosanSpawned")
-    local r = hwRoot()
-
-    if not folder or not r then return nil end
-
-    local best, bd
-
-    for _, house in ipairs(folder:GetChildren()) do
-        for _, p in ipairs(hwGet(house, 1)) do
-            local q = hwPart(p)
-
-            if q then
-                local d = (r.Position - q.Position).Magnitude
-
-                if not bd or d < bd then
-                    best, bd = house, d
-                end
-            end
-        end
+local function gachaCycle()
+    setStatus("GACHA: MEMBACA STATE")
+    local stateOK, state = gachaCall("GetState")
+    if not stateOK or type(state) ~= "table" then
+        setStatus("GACHA: GAGAL MEMBACA STATE")
+        return false
     end
 
-    return best
-end
+    local free = tonumber(state.free) or 0
+    if free >= 10 then
+        setStatus("GACHA: FREE X10")
+        local spinOK, result = gachaCall("SpinX10WithFree")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: FREE X10 GAGAL")
+            return false
+        end
+        return gachaClaimMulti(result.results)
 
-local function homeworkRun()
-    if homeworkBusy then return end
-    homeworkBusy = true
-
-    while alive() and homeworkEnabled do
-        local folder = W:FindFirstChild("KosanSpawned")
-
-        if not folder then
-            setStatus("KOSANSPAWNED TIDAK DITEMUKAN")
-            task.wait(2)
-            break
+    elseif free > 0 then
+        setStatus("GACHA: FREE SPIN 1X")
+        local spinOK, result = gachaCall("Spin")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: FREE SPIN GAGAL")
+            return false
         end
 
-        local house = hwFindHouse()
-
-        -- Tidak ada rumah kotor: selesai.
-        if not house then
-            setStatus("SEMUA RUMAH SELESAI")
-            break
+        local claimOK, claimResult = gachaCall("ClaimReward")
+        if not claimOK then
+            setStatus("GACHA: KLAIM FREE SPIN GAGAL - " .. tostring(claimResult))
+            return false
         end
+        setStatus("GACHA: FREE SPIN SELESAI")
+        return true
 
-        setStatus("HOMEWORK: MEMBERSIHKAN RUMAH")
-
-        -- Bersihkan semua prompt di rumah terpilih.
-        local done = {}
-
-        while alive() and homeworkEnabled do
-            local prompt
-
-            for _, p in ipairs(hwGet(house, 1)) do
-                if not done[p] then
-                    prompt = p
-                    break
-                end
-            end
-
-            if not prompt then break end
-
-            if not hwUse(prompt) then
-                if homeworkEnabled then
-                    setStatus("GAGAL MEMBERSIHKAN")
-                end
-                break
-            end
-
-            done[prompt] = true
-            task.wait(0.2)
+    elseif gachaPaidEnabled then
+        setStatus("GACHA: PAID X10")
+        local spinOK, result = gachaCall("SpinX10WithMoney")
+        if not spinOK or type(result) ~= "table" or result.ok ~= true then
+            setStatus("GACHA: PAID X10 GAGAL")
+            return false
         end
+        return gachaClaimMulti(result.results)
 
-        if not alive() or not homeworkEnabled then break end
-
-        -- Tunggu TrashBag muncul, maksimal 30 detik.
-        setStatus("HOMEWORK: MENUNGGU SAMPAH")
-
-        local idle = 0
-
-        while alive() and homeworkEnabled and idle < 30 do
-            if hwCarrying() then
-                setStatus("HOMEWORK: MEMBUANG SAMPAH")
-
-                if not hwDispose() then
-                    setStatus("GAGAL MEMBUANG SAMPAH")
-                    break
-                end
-
-                idle = 0
-            else
-                local bags = hwGet(house, 2)
-
-                if #bags > 0 then
-                    setStatus("HOMEWORK: MENGAMBIL SAMPAH")
-
-                    if not hwUse(bags[1])
-                    or not hwWaitCarry(true) then
-                        setStatus("GAGAL MENGAMBIL SAMPAH")
-                        break
-                    end
-
-                    setStatus("HOMEWORK: MEMBUANG SAMPAH")
-
-                    if not hwDispose() then
-                        setStatus("GAGAL MEMBUANG SAMPAH")
-                        break
-                    end
-
-                    idle = 0
-
-                elseif #hwGet(house, 1) > 0 then
-                    idle = 0
-                    task.wait(1)
-
-                else
-                    idle += 1
-                    task.wait(1)
-                end
-            end
-        end
-
-        if not alive() or not homeworkEnabled then break end
-
-        -- Rumah selesai, cari rumah kotor berikutnya.
-        if #hwGet(house, 1) > 0
-        or #hwGet(house, 2) > 0
-        or hwCarrying() then
-            setStatus("SAMPAH BELUM SELESAI")
-            break
-        end
-
-        task.wait(0.3)
-    end
-
-    homeworkEnabled = false
-    homeworkBusy = false
-    updateButtons()
-
-    if alive() then
-        if autoFarm then
-            setStatus("HOMEWORK SELESAI - FARM LANJUT")
-        else
-            setStatus("HOMEWORK SELESAI")
-        end
-    end
-end
-
--- ==========================================
--- BUTTON EVENTS
--- ==========================================
-
-connect(cleanButton.MouseButton1Click, function()
-    if not alive() then return end
-    if autoFarm or homeworkEnabled or homeworkBusy then return end
-
-    enabled = not enabled
-    updateButtons()
-end)
-
-connect(farmButton.MouseButton1Click, function()
-    if not alive() then return end
-
-    autoFarm = not autoFarm
-
-    if autoFarm then
-        enabled = true
-        setStatus("FARM DIMULAI")
     else
-        setStatus("FARM DIMATIKAN")
+        setStatus("GACHA: MENUNGGU FREE SPIN (PAID OFF)")
+        return nil
     end
+end]=]
 
-    updateButtons()
-end)
+source = onyxReplaceBetween(
+    source,
+    "local function getGachaService()",
+    "local function gachaWorker()",
+    onyxGachaNative
+)
 
-connect(homeworkButton.MouseButton1Click, function()
-    if not alive() then return end
-
-    if homeworkEnabled then
-        homeworkEnabled = false
-        setStatus("HOMEWORK DIMATIKAN")
-        updateButtons()
-        return
-    end
-
-    if homeworkBusy then return end
-
-    homeworkEnabled = true
-    updateButtons()
-    setStatus("HOMEWORK DIMULAI")
-
-    task.spawn(homeworkRun)
-end)
+-- AUTO JAM AJAIB: ditambahkan ke source core, bukan loader terpisah.
+source = source .. [====[
 
 -- ==========================================
--- AUTO CLEANER TARGET
+-- AUTO JAM AJAIB - RAEL'S TRICKS
+-- Loop scan | sekali per rumah per sesi
+-- >20 menit | <=220 stud | posisi pemain tetap
 -- ==========================================
 
-local function getNearest(root)
-    local now = os.clock()
-    local carryingTrash = isCarryingTrash()
-    local nearest
-    local shortest = math.huge
+local jamAutoEnabled = false
+local jamBusy = false
+local jamProcessed = setmetatable({}, {__mode = "k"})
+local jamService
 
-    for prompt in pairs(prompts) do
-        if prompt.Parent and prompt.Enabled and isAllowed(prompt) then
-            if autoFarm and isDroppingPrompt(prompt) then
-                continue
-            end
+local jamButton = Instance.new("TextButton")
+jamButton.Name = "AutoJamAjaibButton"
+jamButton.Size = UDim2.fromOffset(180, 29)
+jamButton.Position = UDim2.fromOffset(12, 300)
+jamButton.ZIndex = 10
+jamButton.Active = true
+jamButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
+jamButton.BorderSizePixel = 0
+jamButton.Text = "AUTO JAM AJAIB: OFF"
+jamButton.TextColor3 = Color3.new(1, 1, 1)
+jamButton.TextSize = 10
+jamButton.Font = Enum.Font.GothamBold
+jamButton.Parent = frame
+Instance.new("UICorner", jamButton).CornerRadius = UDim.new(0, 6)
 
-            local action = (prompt.ActionText or ""):lower()
-            local isClean = action:find("bersihkan", 1, true)
-            local isTake = action:find("ambil", 1, true)
-            local isDrop = action:find("buang", 1, true)
+local function paintJamButton()
+    jamButton.Text = jamAutoEnabled and "AUTO JAM AJAIB: ON" or "AUTO JAM AJAIB: OFF"
+    jamButton.BackgroundColor3 = jamAutoEnabled
+        and Color3.fromRGB(5, 150, 105)
+        or Color3.fromRGB(127, 29, 29)
+end
 
-            if isTake and carryingTrash then continue end
-            if isDrop and not carryingTrash then continue end
-
-            local ready = not lastAttempt[prompt]
-                or now - lastAttempt[prompt] >= RETRY_DELAY
-
-            if ready then
-                local pos = getPosition(prompt)
-                local range = isClean and RANGE_CLEAN or RANGE_TRASH
-
-                if pos then
-                    local distance = (root.Position - pos).Magnitude
-
-                    if distance <= range and distance < shortest then
-                        nearest = prompt
-                        shortest = distance
-                    end
+local function getJamTool()
+    local char = player.Character
+    local bag = player:FindFirstChildOfClass("Backpack")
+    for _, container in ipairs({char, bag}) do
+        if container then
+            for _, obj in ipairs(container:GetChildren()) do
+                if obj:IsA("Tool") and obj:GetAttribute("JamAjaib") then
+                    return obj
                 end
             end
         end
     end
-
-    return nearest
 end
 
--- ==========================================
--- DROPPING SCANNER
--- ==========================================
-
-local function findNextDropping()
-    local folder = getDroppingFolder()
-
-    if not folder then
-        return nil, nil, false, false, false
+local function jamRentedCount(house)
+    local count = 0
+    if house:GetAttribute("KosanState") == "Disewa" then
+        count += 1
     end
-
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-
-    if not root then
-        return nil, nil, true, false, false
-    end
-
-    local now = os.clock()
-    local nearestReady, nearestReadyPos
-    local nearestWaiting, nearestWaitingPos
-    local nearestReadyDistance = math.huge
-    local nearestWaitingDistance = math.huge
-    local hasDroppings = false
-
-    for _, obj in ipairs(folder:GetDescendants()) do
-        if obj:IsA("ProximityPrompt")
-        and isDroppingPrompt(obj)
-        and obj.Enabled then
-
-            hasDroppings = true
-
-            local pos = getPosition(obj)
-
-            if pos then
-                local distance = (root.Position - pos).Magnitude
-                local last = collectCooldown[obj]
-                local ready = not last or now - last >= DROPPING_RETRY
-
-                if ready and distance < nearestReadyDistance then
-                    nearestReady = obj
-                    nearestReadyPos = pos
-                    nearestReadyDistance = distance
-                elseif not ready and distance < nearestWaitingDistance then
-                    nearestWaiting = obj
-                    nearestWaitingPos = pos
-                    nearestWaitingDistance = distance
-                end
-            elseif not nearestWaiting then
-                nearestWaiting = obj
-            end
+    for _, child in ipairs(house:GetChildren()) do
+        if child:IsA("Model")
+        and child:GetAttribute("KosanState") == "Disewa" then
+            count += 1
         end
     end
-
-    if nearestReady then
-        return nearestReady, nearestReadyPos, true, true, false
-    end
-
-    if hasDroppings then
-        return nearestWaiting, nearestWaitingPos, true, true, true
-    end
-
-    return nil, nil, true, false, false
+    return count
 end
 
--- ==========================================
--- FEED TOOL
--- ==========================================
-
-local function findCabai()
-    local character = player.Character
-
-    local function search(container)
-        if not container then return nil end
-
-        for _, tool in ipairs(container:GetChildren()) do
-            local name = tool.Name:lower()
-
-            if tool:IsA("Tool")
-            and name:find("cabai", 1, true)
-            and not name:find("bibit", 1, true) then
-                return tool
-            end
-        end
-    end
-
-    return search(character) or search(backpack)
+local function jamRemaining(house)
+    local endsAt = house:GetAttribute("RentEndsAt")
+    if typeof(endsAt) ~= "number" then return -1 end
+    return endsAt - time()
 end
 
-local function equipCabai()
-    local tool = findCabai()
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-    if not tool or not humanoid then return false end
-
-    if tool.Parent ~= character then
-        humanoid:EquipTool(tool)
-        task.wait(0.7)
-    end
-
-    return tool.Parent == character
+local function jamDistance(house)
+    local char = player.Character
+    local root = char and char:FindFirstChild("HumanoidRootPart")
+    if not root then return math.huge end
+    local ok, cf = pcall(function()
+        return house:GetBoundingBox()
+    end)
+    if not ok then return math.huge end
+    return (root.Position - cf.Position).Magnitude
 end
 
--- ==========================================
--- FEED STOCK
--- ==========================================
-
-local function getStock(palung)
-    if not palung then return nil end
-
-    for _, obj in ipairs(palung:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local txt = (obj.Text or ""):lower()
-            local name = obj.Name:lower()
-
-            if txt:find("pakan", 1, true)
-            or name:find("pakan", 1, true) then
-                local amount = txt:match("(%d+)%s*/%s*100")
-                if amount then return tonumber(amount) end
-            end
-        end
-    end
-
-    for _, obj in ipairs(palung:GetDescendants()) do
-        if obj:IsA("TextLabel") or obj:IsA("TextButton") then
-            local amount = (obj.Text or ""):match("(%d+)%s*/%s*100")
-            if amount then return tonumber(amount) end
-        end
-    end
-
-    return nil
+local function getJamService()
+    if jamService then return jamService end
+    local rs = game:GetService("ReplicatedStorage")
+    local nk = rs:WaitForChild("NKSystem", 15)
+    if not nk then error("NKSystem tidak ditemukan") end
+    local packages = nk:WaitForChild("Packages", 15)
+    if not packages then error("Packages tidak ditemukan") end
+    local knitFolder = packages:WaitForChild("Knit", 15)
+    if not knitFolder then error("Knit tidak ditemukan") end
+    local knitModule = knitFolder:WaitForChild("KnitClient", 15)
+    if not knitModule then error("KnitClient tidak ditemukan") end
+    local Knit = require(knitModule)
+    jamService = Knit.GetService("JamAjaibService")
+    if not jamService then error("JamAjaibService tidak ditemukan") end
+    return jamService
 end
 
--- ==========================================
--- FEED PROMPT
--- ==========================================
-
-local function findFeedPrompt(palung)
-    if not palung then return nil end
-
-    local direct = palung:FindFirstChild("IsiPakanPrompt", true)
-
-    if direct and direct:IsA("ProximityPrompt") then
-        return direct
+local function jamFire(house)
+    local completed, response, failure = false, nil, nil
+    local ok, promise = pcall(function()
+        return getJamService():Tembak(house)
+    end)
+    if not ok or not promise then
+        return false, "PEMANGGILAN SERVICE GAGAL: " .. tostring(promise)
     end
 
-    for _, obj in ipairs(palung:GetDescendants()) do
-        if obj:IsA("ProximityPrompt") then
-            local action = (obj.ActionText or ""):lower()
-            local object = (obj.ObjectText or ""):lower()
-            local name = obj.Name:lower()
-
-            if action:find("isi", 1, true)
-            or object:find("pakan", 1, true)
-            or name:find("isi", 1, true)
-            or name:find("pakan", 1, true) then
-                return obj
-            end
-        end
+    local chainOK, chainError = pcall(function()
+        promise:andThen(function(result)
+            response = result
+            completed = true
+        end):catch(function(reason)
+            failure = reason
+            completed = true
+        end)
+    end)
+    if not chainOK then
+        return false, "PEMANTAUAN PROMISE GAGAL: " .. tostring(chainError)
     end
 
-    return nil
+    local deadline = os.clock() + 12
+    repeat
+        task.wait(0.1)
+    until completed or os.clock() >= deadline
+
+    if not completed then return false, "RESPONS SERVER TIMEOUT" end
+    if failure then return false, tostring(failure) end
+    if not response or response.ok ~= true then
+        return false, "DITOLAK SERVER"
+    end
+    return true, response
 end
 
--- ==========================================
--- GET FEEDERS
--- ==========================================
+local function jamWorker()
+    if jamBusy then return end
+    jamBusy = true
 
-local function getFeeders()
-    local result = {}
-    local kandang = getCurrentKandang()
-
-    if not kandang then return result end
-
-    local pen = getCurrentPen()
-
-    if pen then
-        for _, name in ipairs({"Palung_1", "Palung_2"}) do
-            local palung = pen:FindFirstChild(name, true)
-
-            if palung then
-                table.insert(result, {
-                    name = name,
-                    object = palung
-                })
-            end
-        end
-    end
-
-    local number = getKandangNumber()
-    local farm = W:FindFirstChild("TernakLokal")
-
-    if farm and number then
-        for _, name in ipairs({
-            "Palung_Kandang_" .. number .. "_1",
-            "Palung_Kandang_" .. number .. "_2"
-        }) do
-            local palung = farm:FindFirstChild(name, true)
-
-            if palung then
-                local exists = false
-
-                for _, entry in ipairs(result) do
-                    if entry.object == palung then
-                        exists = true
-                    end
-                end
-
-                if not exists then
-                    table.insert(result, {
-                        name = name,
-                        object = palung
-                    })
-                end
-            end
-        end
-    end
-
-    return result
-end
-
--- ==========================================
--- AUTO FEED ONLY AT 0/100
--- ==========================================
-
-local function feedOne()
-    local feeders = getFeeders()
-
-    if #feeders == 0 then
-        setStatus("PALUNG TIDAK DITEMUKAN")
-        return false
-    end
-
-    local foundZero = false
-    local attempted = false
-
-    for _, entry in ipairs(feeders) do
-        if not alive() or not autoFarm
-        or homeworkEnabled or homeworkBusy then
-            return false
-        end
-
-        local stock = getStock(entry.object)
-
-        if stock == nil then
-            setStatus(entry.name .. ": STOK TIDAK TERBACA")
-            continue
-        end
-
-        if stock ~= 0 then continue end
-        foundZero = true
-
-        local now = os.clock()
-        local last = feedCooldown[entry.name]
-
-        if last and now - last < FEED_RETRY then
-            continue
-        end
-
-        attempted = true
-
-        if not equipCabai() then
-            setStatus("CABAI TIDAK DITEMUKAN")
-            return false
-        end
-
-        local prompt = findFeedPrompt(entry.object)
-
-        if not prompt then
-            setStatus(entry.name .. ": PROMPT ISI TIDAK ADA")
-            feedCooldown[entry.name] = os.clock()
-            continue
-        end
-
-        if not prompt.Enabled then
-            setStatus(entry.name .. ": PROMPT ISI NONAKTIF")
-            feedCooldown[entry.name] = os.clock()
-            continue
-        end
-
-        local position = getPosition(prompt)
-            or getObjectPosition(entry.object)
-
-        if not position then
-            setStatus(entry.name .. ": POSISI PALUNG GAGAL")
-            continue
-        end
-
-        setStatus(entry.name .. ": MENGISI PAKAN 0/100")
-
-        if not teleportNear(position, 2) then continue end
-
-        if not alive() or not autoFarm
-        or homeworkEnabled or homeworkBusy then
-            continue
-        end
-
-        local ok = activatePrompt(prompt)
-
-        if not ok then
-            feedCooldown[entry.name] = os.clock()
-            setStatus(entry.name .. ": INTERAKSI GAGAL")
-            continue
-        end
-
-        local start = os.clock()
-        local newStock = getStock(entry.object)
-
-        while alive() and autoFarm
-        and not homeworkEnabled and not homeworkBusy
-        and os.clock() - start < 6 do
-            task.wait(0.25)
-
-            newStock = getStock(entry.object)
-
-            if newStock ~= nil and newStock > 0 then
-                break
-            end
-        end
-
-        if newStock ~= nil and newStock > 0 then
-            feedCooldown[entry.name] = nil
-            setStatus(entry.name .. ": PAKAN " .. newStock .. "/100")
-        else
-            feedCooldown[entry.name] = os.clock()
-            setStatus(entry.name .. ": PENGISIAN BELUM BERHASIL")
-        end
-    end
-
-    if not foundZero then
-        setStatus("PAKAN BELUM 0/100")
-    elseif not attempted then
-        setStatus("MENUNGGU COOLDOWN PAKAN")
-    end
-
-    return attempted
-end
-
--- ==========================================
--- REGISTER PROMPTS
--- ==========================================
-
-for _, obj in ipairs(W:GetDescendants()) do
-    addPrompt(obj)
-end
-
-connect(W.DescendantAdded, function(obj)
-    if alive() then addPrompt(obj) end
-end)
-
--- ==========================================
--- AUTO CLEANER LOOP
--- ==========================================
-
-task.spawn(function()
-    while alive() and gui.Parent do
-        task.wait(SCAN_DELAY)
-
-        if not enabled or busy
-        or homeworkEnabled or homeworkBusy then
-            continue
-        end
-
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-
-        if not root then continue end
-
-        local prompt = getNearest(root)
-
-        if prompt and enabled
-        and not homeworkEnabled and not homeworkBusy then
-            busy = true
-            lastAttempt[prompt] = os.clock()
-
-            activatePrompt(prompt)
-            task.wait(0.1)
-
-            busy = false
-        end
-    end
-end)
-
--- ==========================================
--- AUTO FARM LOOP
--- ==========================================
-
-task.spawn(function()
-    local emptyScans = 0
-
-    while alive() and gui.Parent do
-        task.wait(0.5)
-
-        if not autoFarm then
-            emptyScans = 0
-            continue
-        end
-
-        -- HOMEWORK PRIORITY
-        if homeworkEnabled or homeworkBusy then
-            continue
-        end
-
-        enabled = true
-        updateButtons()
-
-        if not getCurrentKandang() then
-            setStatus("MEMBACA DATA KANDANG")
-            emptyScans = 0
-            continue
-        end
-
-        local folder = getDroppingFolder()
+    while alive() and jamAutoEnabled do
+        local folder = W:FindFirstChild("KosanSpawned")
+        local tool = getJamTool()
 
         if not folder then
-            emptyScans += 1
-
-            if emptyScans < 3 then
-                setStatus("FOLDER KOTORAN TIDAK ADA - CEK ULANG")
-                continue
-            end
-
-            setStatus("TIDAK ADA KOTORAN - CEK PAKAN")
-            feedOne()
-            emptyScans = 0
+            setStatus("JAM AJAIB: KOSANSPAWNED TIDAK DITEMUKAN")
+            task.wait(4)
             continue
         end
 
-        local prompt, pos, scanReady, hasDroppings, waiting =
-            findNextDropping()
-
-        if not scanReady then
-            emptyScans += 1
-
-            if emptyScans < 3 then
-                setStatus("SCAN KOTORAN - CEK ULANG")
-                continue
-            end
-
-            setStatus("KOTORAN TIDAK TERDETEKSI - CEK PAKAN")
-            feedOne()
-            emptyScans = 0
+        if not tool then
+            setStatus("JAM AJAIB: TOOL TIDAK DITEMUKAN")
+            task.wait(4)
             continue
         end
 
-        if hasDroppings then
-            emptyScans = 0
+        if tool.Parent ~= player.Character then
+            setStatus("JAM AJAIB: EQUIP TOOL TERLEBIH DAHULU")
+            task.wait(3)
+            continue
+        end
 
-            if waiting then
-                setStatus("KOTORAN MENUNGGU COOLDOWN")
+        local stock = tool:GetAttribute("Count")
+        if typeof(stock) ~= "number" or stock <= 0 then
+            setStatus("JAM AJAIB: STOK HABIS / TIDAK TERBACA")
+            jamAutoEnabled = false
+            paintJamButton()
+            break
+        end
+
+        local targets = {}
+        for _, house in ipairs(folder:GetChildren()) do
+            if house:IsA("Model")
+            and not jamProcessed[house]
+            and house:GetAttribute("OwnerUserId") == player.UserId
+            and jamRentedCount(house) > 0
+            and jamRemaining(house) > 1200 then
+                targets[#targets + 1] = house
+            end
+        end
+
+        table.sort(targets, function(a, b)
+            return jamRemaining(a) > jamRemaining(b)
+        end)
+
+        local firedThisPass = 0
+
+        for _, house in ipairs(targets) do
+            if not alive() or not jamAutoEnabled then break end
+
+            tool = getJamTool()
+            if not tool or tool.Parent ~= player.Character then
+                setStatus("JAM AJAIB: TOOL TIDAK DIPEGANG")
+                break
+            end
+
+            stock = tool:GetAttribute("Count")
+            if typeof(stock) ~= "number" or stock <= 0 then
+                setStatus("JAM AJAIB: STOK HABIS")
+                jamAutoEnabled = false
+                paintJamButton()
+                break
+            end
+
+            -- Validasi ulang tepat sebelum setiap tembakan.
+            if house.Parent ~= folder
+            or house:GetAttribute("OwnerUserId") ~= player.UserId
+            or jamRentedCount(house) <= 0 then
+                setStatus("JAM AJAIB: TARGET BERUBAH - DILEWATI")
                 continue
             end
 
-            if not prompt or not pos then
-                setStatus("POSISI KOTORAN TIDAK TERBACA")
+            local seconds = jamRemaining(house)
+            if seconds <= 1200 then
+                setStatus("JAM AJAIB: SISA WAKTU <= 20 MENIT")
                 continue
             end
 
-            setStatus("MENUJU KOTORAN")
-
-            if not teleportNear(pos, 1.5) then
-                collectCooldown[prompt] = os.clock()
+            local distance = jamDistance(house)
+            if distance > 220 then
+                setStatus("JAM AJAIB: " .. house.Name .. " TERLALU JAUH")
                 continue
             end
 
-            if not alive() or not autoFarm
-            or homeworkEnabled or homeworkBusy then
-                continue
+            setStatus(string.format(
+                "JAM AJAIB: TEMBAK %s | %.1f MENIT",
+                house.Name, seconds / 60
+            ))
+
+            local shotOK, result = jamFire(house)
+            if not shotOK then
+                setStatus("JAM AJAIB BERHENTI: " .. tostring(result))
+                jamAutoEnabled = false
+                paintJamButton()
+                break
             end
 
-            local activated, method = activatePrompt(prompt)
+            jamProcessed[house] = true
+            firedThisPass += 1
+            task.wait(0.15)
 
-            if not activated then
-                collectCooldown[prompt] = os.clock()
-                setStatus("INTERAKSI GAGAL")
-                continue
-            end
+            local afterTool = getJamTool()
+            local afterStock = afterTool and afterTool:GetAttribute("Count")
+            setStatus(string.format(
+                "JAM AJAIB: BERHASIL %s | STOK %s -> %s",
+                house.Name, tostring(stock), tostring(afterStock)
+            ))
 
-            setStatus("MENCOBA AMBIL: " .. method)
+            task.wait(2.7)
+        end
 
-            local start = os.clock()
-            local collected = false
-
-            while alive() and autoFarm
-            and not homeworkEnabled and not homeworkBusy
-            and os.clock() - start < 4 do
-                task.wait(0.15)
-
-                if not prompt.Parent
-                or not prompt:IsDescendantOf(folder)
-                or not prompt.Enabled then
-                    collected = true
-                    break
-                end
-            end
-
-            if collected then
-                collectCooldown[prompt] = nil
-                setStatus("KOTORAN TERAMBIL")
+        if jamAutoEnabled and alive() then
+            if firedThisPass == 0 then
+                setStatus("JAM AJAIB: SCAN ULANG | TUNGGU TARGET")
             else
-                collectCooldown[prompt] = os.clock()
-                setStatus("BELUM TERAMBIL - COBA ULANG")
+                setStatus("JAM AJAIB: PASS SELESAI | " .. firedThisPass .. " RUMAH")
             end
-
-            continue
+            task.wait(5)
         end
-
-        emptyScans += 1
-
-        if emptyScans < 3 then
-            setStatus("MEMASTIKAN KOTORAN HABIS")
-            continue
-        end
-
-        setStatus("KOTORAN HABIS - CEK PAKAN")
-        feedOne()
-        emptyScans = 0
     end
-end)
 
--- ==========================================
--- TP LOCATION
--- ==========================================
+    jamBusy = false
+    if alive() and not jamAutoEnabled then
+        setStatus("AUTO JAM AJAIB NONAKTIF")
+    end
+end
 
-local oldTool = backpack:FindFirstChild("TP LOCATION")
-    or (player.Character and player.Character:FindFirstChild("TP LOCATION"))
-
-if oldTool then oldTool:Destroy() end
-
-local tool = track(Instance.new("Tool"))
-tool.Name = "TP LOCATION"
-tool.RequiresHandle = false
-tool.CanBeDropped = false
-tool.Parent = backpack
-
-local tpEquipped = false
-local equipTime = 0
-
-connect(tool.Equipped, function()
-    tpEquipped = true
-    equipTime = os.clock()
-end)
-
-connect(tool.Unequipped, function()
-    tpEquipped = false
-end)
-
-connect(UIS.TouchTapInWorld, function(position, processed)
-    if not alive() or not tpEquipped or processed then return end
-    if os.clock() - equipTime < 0.25 then return end
-
-    local camera = W.CurrentCamera
-    if not camera then return end
-
-    local ray = camera:ViewportPointToRay(position.X, position.Y)
-    local params = RaycastParams.new()
-    params.FilterType = Enum.RaycastFilterType.Exclude
-    params.FilterDescendantsInstances = {player.Character}
-
-    local result = W:Raycast(ray.Origin, ray.Direction * 1500, params)
-    if not result then return end
-
-    local character = player.Character
-    local root = character and character:FindFirstChild("HumanoidRootPart")
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-
-    if not root or not humanoid then return end
-
-    local height = humanoid.HipHeight + root.Size.Y / 2
-
-    root.CFrame = CFrame.new(
-        result.Position.X,
-        result.Position.Y + height + 0.15,
-        result.Position.Z
-    )
-end)
-
--- ==========================================
--- ANTI AFK
--- ==========================================
-
-connect(player.Idled, function()
+connect(jamButton.Activated, function()
     if not alive() then return end
+    jamAutoEnabled = not jamAutoEnabled
+    paintJamButton()
 
-    pcall(function()
-        VirtualUser:CaptureController()
-        VirtualUser:ClickButton2(Vector2.new(0, 0))
-    end)
-end)
-
--- ==========================================
--- GUI DESTROY GUARD
--- ==========================================
-
-connect(gui.Destroying, function()
-    if env.RaelV18Session == SESSION then
-        env.RaelV18Running = false
+    if jamAutoEnabled then
+        setStatus("AUTO JAM AJAIB DIMULAI")
+        task.spawn(jamWorker)
+    else
+        setStatus("AUTO JAM AJAIB DIMATIKAN")
     end
 end)
 
--- ==========================================
--- FINISH
--- ==========================================
+paintJamButton()
 
-updateButtons()
-setStatus("READY - FARM OFF")
+]====]
 
-print("ONYX HUB // TEST + HOMEWORK LOADED")
-print("AUTO CLEAN READY")
-print("AUTO FARM READY")
-print("HOMEWORK READY - SEPARATE TOGGLE")
-print("AUTO FEED WHEN FOLDER MISSING")
-print("FEED ONLY AT 0/100")
-print("MINIMIZE + REOPEN READY")
-print("TP LOCATION + ANTI AFK READY")
-print("NO STOP ALL")
+-- No second exit button: keep the single core header close control.
+
+
+source = source .. [====[
+-- Status remains internal only; remove the visible status panel.
+if statusPanel and statusPanel.Parent then statusPanel:Destroy() end
+local function setStatus(msg) end
+local exitButton
+do
+    -- Core saat ini memakai frame langsung, bukan objek Header terpisah.
+    local header = frame
+    minimizeButton.Position = UDim2.new(1, -94, 0, 2)
+    exitButton = Instance.new("TextButton")
+    exitButton.Name = "OnyxExitButton"
+    -- X memakai ukuran dan posisi tombol minimize asli.
+    exitButton.Size = minimizeButton.Size
+    exitButton.Position = UDim2.new(1, -29, 0, 1)
+    exitButton.BackgroundColor3 = Color3.fromRGB(145, 45, 55)
+    exitButton.BorderSizePixel = 0
+    exitButton.Text = "X"
+    exitButton.TextColor3 = Color3.new(1, 1, 1)
+    exitButton.TextSize = 13
+    exitButton.Font = Enum.Font.GothamBlack
+    exitButton.Parent = header
+    Instance.new("UICorner", exitButton).CornerRadius = UDim.new(0, 7)
+    connect(exitButton.Activated, function()
+        -- STOP ALL: matikan seluruh worker Farm/Feed/Convert sebelum GUI ditutup.
+        local env = getgenv()
+        -- STOP ALL: hentikan seluruh worker dari CORE dan Farm/Feed/Convert.
+        env.ONYX_STOP_ALL = true
+        env.RaelV18Running = false
+        env.RFC_Running = false
+
+        for _, key in ipairs({"RaelV18Connections", "RFC_Connections"}) do
+            local connections = env[key]
+            if connections then
+                for _, connection in ipairs(connections) do
+                    pcall(function() connection:Disconnect() end)
+                end
+                table.clear(connections)
+            end
+        end
+
+        for _, key in ipairs({"RaelV18Objects", "RFC_Objects"}) do
+            local objects = env[key]
+            if objects then
+                for _, object in ipairs(objects) do
+                    pcall(function() object:Destroy() end)
+                end
+                table.clear(objects)
+            end
+        end
+
+        -- Hapus TP LOCATION secara eksplisit dari Backpack maupun Character.
+        local Players = game:GetService("Players")
+        local localPlayer = Players.LocalPlayer
+        local backpack = localPlayer:FindFirstChildOfClass("Backpack")
+        local character = localPlayer.Character
+        for _, container in ipairs({backpack, character}) do
+            if container then
+                for _, object in ipairs(container:GetDescendants()) do
+                    if object:IsA("Tool") and object.Name == "TP LOCATION" then
+                        pcall(function() object:Destroy() end)
+                    end
+                end
+                local directTool = container:FindFirstChild("TP LOCATION")
+                if directTool then pcall(function() directTool:Destroy() end) end
+            end
+        end
+
+        local playerGui = localPlayer:FindFirstChildOfClass("PlayerGui")
+        if playerGui then
+            for _, guiName in ipairs({"RaelsTricksV18", "RaelFarmFeedConvert"}) do
+                local oldGui = playerGui:FindFirstChild(guiName)
+                if oldGui then pcall(function() oldGui:Destroy() end) end
+            end
+        end
+        if gui and gui.Parent then gui:Destroy() end
+    end)
+
+    local camera = workspace.CurrentCamera
+    local viewport = camera and camera.ViewportSize or Vector2.new(390, 800)
+    local panelHeight = math.min(420, math.max(260, viewport.Y - 110))
+
+    -- Fit the existing feature controls inside a mobile-safe scrolling viewport.
+    frame.Size = UDim2.fromOffset(318, panelHeight)
+    frame.Position = UDim2.new(1, -330, 0, math.max(12, math.min(95, viewport.Y - panelHeight - 12)))
+
+    local contentScroll = Instance.new("ScrollingFrame")
+    contentScroll.Name = "FeatureScroll"
+    contentScroll.Position = UDim2.fromOffset(58, 47)
+    contentScroll.Size = UDim2.new(1, -64, 1, -53)
+    contentScroll.BackgroundTransparency = 1
+    contentScroll.BorderSizePixel = 0
+    contentScroll.ScrollBarThickness = 3
+    contentScroll.ScrollBarImageColor3 = Color3.fromRGB(76, 190, 170)
+    contentScroll.CanvasPosition = Vector2.new(0, 0)
+    contentScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    contentScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    contentScroll.ZIndex = 2
+    contentScroll.Parent = frame
+
+    local contentPadding = Instance.new("UIPadding")
+    contentPadding.PaddingBottom = UDim.new(0, 12)
+    contentPadding.Parent = contentScroll
+
+    -- Preserve every legacy control's exact authored position and size.
+    local maxBottom = 0
+    for _, child in ipairs(frame:GetChildren()) do
+        if child:IsA("GuiObject")
+        and child ~= header
+        and child ~= contentScroll
+        and child.Name ~= "ExitButton" then
+            local y = child.Position.Y.Offset
+            if y >= 45 then
+                local h = child.AbsoluteSize.Y
+                maxBottom = math.max(maxBottom, y - 45 + h + 12)
+                child.Position = UDim2.new(
+                    child.Position.X.Scale,
+                    child.Position.X.Offset,
+                    child.Position.Y.Scale,
+                    y - 45
+                )
+                child.Parent = contentScroll
+            end
+        end
+    end
+    contentScroll.CanvasSize = UDim2.new(0, 0, 0, maxBottom)
+
+
+    -- ONYX DASHBOARD REDESIGN: new visual hierarchy, hero card, feature cards.
+    frame.BackgroundColor3 = Color3.fromRGB(9, 14, 25)
+    frame.BorderSizePixel = 0
+    local oldStroke = frame:FindFirstChildOfClass("UIStroke")
+    if oldStroke then
+        oldStroke.Color = Color3.fromRGB(42, 65, 88)
+        oldStroke.Thickness = 1.4
+    end
+    local frameGradient = frame:FindFirstChildOfClass("UIGradient")
+    if not frameGradient then
+        frameGradient = Instance.new("UIGradient")
+        frameGradient.Rotation = 90
+        frameGradient.Color = ColorSequence.new({
+            ColorSequenceKeypoint.new(0, Color3.fromRGB(17, 29, 47)),
+            ColorSequenceKeypoint.new(1, Color3.fromRGB(8, 13, 23))
+        })
+        frameGradient.Parent = frame
+    end
+    header.BackgroundColor3 = Color3.fromRGB(13, 23, 37)
+    header.BackgroundTransparency = 0
+    title.Text = "ONYX  /  CONTROL CENTER"
+    title.TextColor3 = Color3.fromRGB(232, 242, 255)
+    title.Font = Enum.Font.GothamBlack
+    title.TextSize = 13
+
+    local hero = Instance.new("Frame")
+    hero.Name = "OnyxDashboardHero"
+    hero.Size = UDim2.new(1, -24, 0, 72)
+    hero.Position = UDim2.fromOffset(12, 8)
+    hero.BackgroundColor3 = Color3.fromRGB(17, 43, 54)
+    hero.BorderSizePixel = 0
+    hero.ZIndex = 4
+    hero.Parent = contentScroll
+    Instance.new("UICorner", hero).CornerRadius = UDim.new(0, 10)
+    local heroGradient = Instance.new("UIGradient")
+    heroGradient.Rotation = 0
+    heroGradient.Color = ColorSequence.new(Color3.fromRGB(20, 68, 72), Color3.fromRGB(19, 35, 58))
+    heroGradient.Parent = hero
+
+    local heroAccent = Instance.new("Frame")
+    heroAccent.Size = UDim2.fromOffset(3, 44)
+    heroAccent.Position = UDim2.fromOffset(12, 14)
+    heroAccent.BackgroundColor3 = Color3.fromRGB(73, 230, 192)
+    heroAccent.BorderSizePixel = 0
+    heroAccent.ZIndex = 5
+    heroAccent.Parent = hero
+    Instance.new("UICorner", heroAccent).CornerRadius = UDim.new(1, 0)
+
+    local heroTitle = Instance.new("TextLabel")
+    heroTitle.Size = UDim2.new(1, -36, 0, 25)
+    heroTitle.Position = UDim2.fromOffset(23, 12)
+    heroTitle.BackgroundTransparency = 1
+    heroTitle.Text = "WELCOME TO ONYX"
+    heroTitle.TextColor3 = Color3.fromRGB(240, 250, 255)
+    heroTitle.TextSize = 14
+    heroTitle.Font = Enum.Font.GothamBlack
+    heroTitle.TextXAlignment = Enum.TextXAlignment.Left
+    heroTitle.ZIndex = 5
+    heroTitle.Parent = hero
+
+    local heroSub = Instance.new("TextLabel")
+    heroSub.Size = UDim2.new(1, -36, 0, 20)
+    heroSub.Position = UDim2.fromOffset(23, 38)
+    heroSub.BackgroundTransparency = 1
+    heroSub.Text = "AUTOMATION  •  FARM  •  CONTROL"
+    heroSub.TextColor3 = Color3.fromRGB(142, 190, 199)
+    heroSub.TextSize = 9
+    heroSub.Font = Enum.Font.GothamBold
+    heroSub.TextXAlignment = Enum.TextXAlignment.Left
+    heroSub.ZIndex = 5
+    heroSub.Parent = hero
+
+    local section = Instance.new("TextLabel")
+    section.Name = "FeatureSectionLabel"
+    section.Size = UDim2.new(1, -24, 0, 20)
+    section.Position = UDim2.fromOffset(12, 88)
+    section.BackgroundTransparency = 1
+    section.Text = "FEATURE CONTROL"
+    section.TextColor3 = Color3.fromRGB(107, 220, 196)
+    section.TextSize = 9
+    section.Font = Enum.Font.GothamBlack
+    section.TextXAlignment = Enum.TextXAlignment.Left
+    section.ZIndex = 4
+    section.Parent = contentScroll
+
+    local redesignedBottom = 108
+    for _, control in ipairs(contentScroll:GetChildren()) do
+        if control:IsA("GuiObject") and control ~= hero and control ~= section then
+            control.Position = UDim2.new(
+                control.Position.X.Scale, control.Position.X.Offset,
+                control.Position.Y.Scale, control.Position.Y.Offset + 108
+            )
+            if control:IsA("TextButton") then
+                control.Size = UDim2.new(1, -24, 0, math.max(32, control.Size.Y.Offset))
+                control.Position = UDim2.new(0, 12, 0, control.Position.Y.Offset)
+                control.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
+                control.TextColor3 = Color3.fromRGB(225, 239, 250)
+                control.Font = Enum.Font.GothamBold
+                control.TextSize = 11
+                control.ZIndex = 5
+                local corner = control:FindFirstChildOfClass("UICorner")
+                if not corner then
+                    corner = Instance.new("UICorner")
+                    corner.Parent = control
+                end
+                corner.CornerRadius = UDim.new(0, 8)
+                local stroke = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
+                stroke.Color = Color3.fromRGB(44, 70, 91)
+                stroke.Thickness = 1
+                stroke.Parent = control
+            end
+            redesignedBottom = math.max(redesignedBottom, control.Position.Y.Offset + control.AbsoluteSize.Y + 10)
+        end
+    end
+    contentScroll.CanvasSize = UDim2.new(0, 0, 0, redesignedBottom + 12)
+
+    -- Icon rail stays available while the expandable control panel is hidden.
+    local rail = Instance.new("Frame")
+    rail.Name = "OnyxIconRail"
+    rail.Size = UDim2.new(0, 48, 1, -55)
+    rail.Position = UDim2.fromOffset(6, 47)
+    rail.BackgroundColor3 = Color3.fromRGB(10, 15, 26)
+    rail.BorderSizePixel = 0
+    rail.ZIndex = 40
+    rail.Parent = frame
+    Instance.new("UICorner", rail).CornerRadius = UDim.new(0, 12)
+
+    local railStroke = Instance.new("UIStroke")
+    railStroke.Color = Color3.fromRGB(43, 57, 78)
+    railStroke.Thickness = 1
+    railStroke.Parent = rail
+
+    local brand = Instance.new("TextLabel")
+    brand.Name = "BrandMark"
+    brand.Size = UDim2.new(1, 0, 0, 42)
+    brand.Position = UDim2.fromOffset(0, 8)
+    brand.BackgroundTransparency = 1
+    brand.Text = "O"
+    brand.TextColor3 = Color3.fromRGB(75, 220, 190)
+    brand.TextSize = 22
+    brand.Font = Enum.Font.GothamBlack
+    brand.ZIndex = 41
+    brand.Parent = rail
+
+    local railLine = Instance.new("Frame")
+    railLine.Size = UDim2.new(1, -18, 0, 1)
+    railLine.Position = UDim2.fromOffset(9, 53)
+    railLine.BackgroundColor3 = Color3.fromRGB(43, 57, 78)
+    railLine.BorderSizePixel = 0
+    railLine.ZIndex = 41
+    railLine.Parent = rail
+
+    local menuButton = Instance.new("TextButton")
+    menuButton.Name = "ExpandMenu"
+    menuButton.Size = UDim2.fromOffset(34, 38)
+    menuButton.Position = UDim2.fromOffset(6, 65)
+    menuButton.BackgroundColor3 = Color3.fromRGB(22, 42, 55)
+    menuButton.BorderSizePixel = 0
+    menuButton.Text = "≡"
+    menuButton.TextColor3 = Color3.fromRGB(105, 235, 205)
+    menuButton.TextSize = 22
+    menuButton.Font = Enum.Font.GothamBold
+    menuButton.ZIndex = 41
+    menuButton.Parent = rail
+    Instance.new("UICorner", menuButton).CornerRadius = UDim.new(0, 8)
+
+    local railCaption = Instance.new("TextLabel")
+    railCaption.Size = UDim2.new(1, -4, 0, 24)
+    railCaption.Position = UDim2.new(0, 2, 1, -31)
+    railCaption.BackgroundTransparency = 1
+    railCaption.Text = "MENU"
+    railCaption.TextColor3 = Color3.fromRGB(145, 160, 180)
+    railCaption.TextSize = 8
+    railCaption.Font = Enum.Font.GothamBold
+    railCaption.ZIndex = 41
+    railCaption.Parent = rail
+
+    connect(menuButton.Activated, function()
+        if not alive() then return end
+        contentScroll.Visible = not contentScroll.Visible
+        menuButton.Text = contentScroll.Visible and "≡" or "›"
+    end)
+
+    -- Hanya satu tombol X, ditempatkan di header utama.
+    exitButton.ZIndex = 25
+    exitButton.Visible = true
+
+    -- Satu frame memuat sidebar + konten. Drag memindahkan seluruh jendela.
+    local UserInputService = game:GetService("UserInputService")
+    local dragging, dragStart, startPosition = false, nil, nil
+    local function beginWindowDrag(input)
+        if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+        dragging = true
+        dragStart = input.Position
+        startPosition = frame.Position
+        input.Changed:Connect(function()
+            if input.UserInputState == Enum.UserInputState.End then dragging = false end
+        end)
+    end
+    local function updateWindowDrag(input)
+        if not dragging then return end
+        if input.UserInputType ~= Enum.UserInputType.Touch
+        and input.UserInputType ~= Enum.UserInputType.MouseMovement then return end
+        local delta = input.Position - dragStart
+        frame.Position = UDim2.new(
+            startPosition.X.Scale, startPosition.X.Offset + delta.X,
+            startPosition.Y.Scale, startPosition.Y.Offset + delta.Y
+        )
+    end
+    header.Active = true
+    rail.Active = true
+    header.InputBegan:Connect(beginWindowDrag)
+    rail.InputBegan:Connect(beginWindowDrag)
+    UserInputService.InputChanged:Connect(updateWindowDrag)
+    UserInputService.TouchMoved:Connect(updateWindowDrag)
+end
+]====]
+
+]==]
+
+wrapper = wrapper:sub(1, at - 1) .. patch .. "\n" .. wrapper:sub(at)
+
+diagnosticStatus("MENG-COMPILE WRAPPER...", false)
+local chunk, compileError = loadstring(wrapper)
+assert(chunk, "Wrapper compile gagal: " .. tostring(compileError))
+diagnosticStatus("MENJALANKAN CORE...", false)
+chunk()
+
+-- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
+diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
+local farmOK, farmError = pcall(function()
+    -- CREATE FARM CONTROLS FIRST, OUTSIDE THE FARM ENGINE COMPILER.
+    -- This guarantees the controls render even if the engine source later fails to compile.
+    local Players = game:GetService("Players")
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local mainGui = playerGui:WaitForChild("RaelsTricksV18", 15)
+    assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
+    local scroll = mainGui:FindFirstChild("FeatureScroll", true)
+    assert(scroll and scroll:IsA("ScrollingFrame"), "FEATURESCROLL ONYX TIDAK DITEMUKAN")
+    -- Bersihkan semua sisa UI Farm versi lama, termasuk yang tersarang
+    -- di dalam card/frame; bukan hanya anak langsung FeatureScroll.
+    for _, stale in ipairs(scroll:GetDescendants()) do
+        if stale.Name == "FarmSectionHeader"
+        or stale.Name == "AutoFarm"
+        or stale.Name == "AutoFeed"
+        or stale.Name == "AutoConvert" then
+            stale:Destroy()
+        elseif stale:IsA("TextButton") then
+            local label = (stale.Text or ""):upper():gsub("%s+", " ")
+            if label:match("^AUTO FARM")
+            or label:match("^AUTO FEED")
+            or label:match("^AUTO CONVERT") then
+                stale:Destroy()
+            end
+        end
+    end
+    -- Hapus juga GUI Farm terpisah yang mungkin tertinggal dari versi sebelumnya.
+    local staleFarmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
+    if staleFarmGui then staleFarmGui:Destroy() end
+    for _, child in ipairs(scroll:GetChildren()) do
+        if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
+        and child.Name ~= "FeatureSectionLabel" and child.Position.Y.Offset >= 116 then
+            child.Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset,
+                child.Position.Y.Scale, child.Position.Y.Offset + 160)
+        end
+    end
+    local farmSection = Instance.new("TextLabel")
+    farmSection.Name = "FarmSectionHeader"
+    farmSection.Size = UDim2.new(1, -24, 0, 20)
+    farmSection.Position = UDim2.fromOffset(12, 116)
+    farmSection.BackgroundTransparency = 1
+    farmSection.Text = "FARM AUTOMATION"
+    farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
+    farmSection.Font = Enum.Font.GothamBlack
+    farmSection.TextSize = 10
+    farmSection.TextXAlignment = Enum.TextXAlignment.Left
+    farmSection.ZIndex = 20
+    farmSection.Parent = scroll
+    local function createFarmToggle(name, label, y, color)
+        local button = Instance.new("TextButton")
+        button.Name = name
+        button.Size = UDim2.new(1, -24, 0, 36)
+        button.Position = UDim2.fromOffset(12, y)
+        button.BackgroundColor3 = color
+        button.TextColor3 = Color3.new(1, 1, 1)
+        button.Text = label .. "  [OFF]"
+        button.TextSize = 11
+        button.Font = Enum.Font.GothamBold
+        button.ZIndex = 20
+        button.Visible = true
+        button.Active = true
+        button.AutoButtonColor = true
+        button.Parent = scroll
+        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+        local stroke = Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(47, 88, 105)
+        stroke.Thickness = 1
+        stroke.Parent = button
+        return button
+    end
+    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 140, Color3.fromRGB(34, 94, 75))
+    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 182, Color3.fromRGB(44, 83, 128))
+    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 224, Color3.fromRGB(113, 77, 39))
+    -- Canvas harus mengikuti seluruh isi menu; jangan dipatok 420px.
+    -- Konten dashboard + tombol Farm bisa lebih panjang dari tinggi panel.
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.ScrollingEnabled = true
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    getgenv().ONYX_FARM_UI = {
+        AutoFarm = autoFarmButton,
+        AutoFeed = autoFeedButton,
+        AutoConvert = autoConvertButton,
+        gui = mainGui,
+        scroll = scroll
+    }
+
+    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Rael-Tricks/main/farm_feed_convert.lua?v=onyx-test-farm-raeltricks-20261125"
+    local farmSource = game:HttpGet(farmUrl)
+    assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
+    farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
+
+    local integratedUI = [=[
+-- ONYX EMBEDDED FARM ENGINE UI BINDINGS
+local gui = playerGui:WaitForChild("RaelsTricksV18", 15)
+assert(gui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
+local panel = gui:FindFirstChild("FeatureScroll", true)
+assert(panel and panel:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
+local farmUI = getgenv().ONYX_FARM_UI
+assert(type(farmUI) == "table", "KONTROL FARM ONYX BELUM DIBUAT")
+local farmButton = farmUI.AutoFarm
+local feedButton = farmUI.AutoFeed
+local convertButton = farmUI.AutoConvert
+assert(farmButton and feedButton and convertButton, "TOMBOL FARM ONYX TIDAK LENGKAP")
+local function setStatus(message) end
+local function paint(button, label, enabled, onColor, offColor)
+    button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
+    button.BackgroundColor3 = enabled and onColor or offColor
+end
+local function updateUI()
+    paint(farmButton, "AUTO FARM", autoFarm, Color3.fromRGB(32,145,94), Color3.fromRGB(34,94,75))
+    paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
+    paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
+end
+]=]
+    local first = assert(farmSource:find("-- NEW GUI: three feature toggles only", 1, true), "BLOK GUI FARM ASLI TIDAK DITEMUKAN")
+    local last = assert(farmSource:find("-- DROPPING SCANNER", first, true), "AKHIR BLOK GUI FARM TIDAK DITEMUKAN")
+    assert(last > first, "RENTANG BLOK GUI FARM TIDAK VALID")
+    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
+    local farmChunk, farmCompileError = loadstring(farmSource)
+    assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
+    farmChunk()
+
+    local Players = game:GetService("Players")
+    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
+    local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
+    assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
+    local scroll = mainGui:FindFirstChild("FeatureScroll", true)
+    assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
+    for _, controlName in ipairs({"AutoFarm", "AutoFeed", "AutoConvert"}) do
+        local control = scroll:FindFirstChild(controlName)
+        assert(control and control:IsA("TextButton"), "KONTROL FARM TIDAK TERTANAM: " .. controlName)
+    end
+
+    -- Pastikan Auto Clean bawaan core Onyx tampil di panel yang sama.
+    local cleanControl = scroll:FindFirstChild("CleanButton")
+    assert(cleanControl and cleanControl:IsA("TextButton"),
+        "AUTO CLEAN TIDAK TERTANAM DI GUI ONYX")
+
+    -- Pastikan tombol X Stop All tetap ada di header Onyx.
+    local stopButton = mainGui:FindFirstChild("OnyxExitButton")
+    assert(stopButton and stopButton:IsA("TextButton") and stopButton.Text == "X",
+        "TOMBOL X STOP ALL ONYX TIDAK DITEMUKAN")
+
+    assert(not playerGui:FindFirstChild("RaelFarmFeedConvert"), "GUI FARM TERPISAH MASIH ADA")
+
+    local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
+    assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")
+    local rail = mainGui:FindFirstChild("OnyxIconRail")
+    if rail then
+        local function makeShortcut(name, glyph, y)
+            local button = Instance.new("TextButton")
+            button.Name = name
+            button.Size = UDim2.fromOffset(34, 38)
+            button.Position = UDim2.fromOffset(6, y)
+            button.BackgroundColor3 = Color3.fromRGB(22, 42, 55)
+            button.BorderSizePixel = 0
+            button.Text = glyph
+            button.TextColor3 = Color3.fromRGB(105, 235, 205)
+            button.TextSize = 17
+            button.Font = Enum.Font.GothamBold
+            button.ZIndex = 41
+            button.Parent = rail
+            Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
+            return button
+        end
+
+        local homeShortcut = makeShortcut("HomeShortcut", "⌂", 145)
+        local farmShortcut = makeShortcut("FarmShortcut", "♧", 191)
+        homeShortcut.Activated:Connect(function()
+            mainFrame.Visible = true
+            scroll.CanvasPosition = Vector2.new(0, 0)
+        end)
+        farmShortcut.Activated:Connect(function()
+            mainFrame.Visible = true
+            local farmHeader = scroll:FindFirstChild("FarmSectionHeader")
+            if farmHeader then
+                scroll.CanvasPosition = Vector2.new(0, farmHeader.Position.Y.Offset)
+            end
+        end)
+    end
+
+    -- FIX SCROLL: hitung batas konten dari posisi absolut SEMUA turunan,
+    -- bukan hanya anak langsung. Ini mencakup kartu/section AUTO GACHA dan PAID
+    -- yang mungkin berada di dalam container bertingkat.
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
+    scroll.ScrollingEnabled = true
+    local function refreshOnyxCanvas()
+        if not scroll.Parent then return end
+        local bottom = 0
+        local scrollTop = scroll.AbsolutePosition.Y
+        local currentOffset = scroll.CanvasPosition.Y
+        for _, item in ipairs(scroll:GetDescendants()) do
+            if item:IsA("GuiObject") and item.Visible then
+                local itemBottom = item.AbsolutePosition.Y - scrollTop
+                    + currentOffset + item.AbsoluteSize.Y
+                if itemBottom > bottom then bottom = itemBottom end
+            end
+        end
+        bottom = math.max(0, math.ceil(bottom + 24))
+        local current = scroll.CanvasSize.Y.Offset
+        if math.abs(current - bottom) > 1 then
+            scroll.CanvasSize = UDim2.new(0, 0, 0, bottom)
+        end
+    end
+
+    -- Tunggu satu frame agar Roblox menghitung AbsolutePosition/AbsoluteSize.
+    task.spawn(function()
+        task.wait(0.2)
+        refreshOnyxCanvas()
+    end)
+    scroll.DescendantAdded:Connect(function()
+        task.defer(refreshOnyxCanvas)
+    end)
+    scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
+        task.defer(refreshOnyxCanvas)
+    end)
+
+end)
+
+if not farmOK then
+    diagnosticStatus("FARM INTEGRASI GAGAL: " .. tostring(farmError):sub(1, 140), true)
+else
+    diagnosticStatus("ONYX + FARM TERINTEGRASI", false)
+end
+end
+
+local bootOK, bootError = pcall(bootOnyxHub)
+if bootOK then
+    diagnosticStatus("CORE BERHASIL DIEKSEKUSI", false)
+    task.delay(2, function()
+        if diagnosticGui and diagnosticGui.Parent then
+            diagnosticGui:Destroy()
+        end
+    end)
+else
+    diagnosticStatus("GAGAL: " .. tostring(bootError):sub(1, 180), true)
+end

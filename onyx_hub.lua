@@ -325,32 +325,29 @@ end]=]
 
 
 
--- REMOVE AUTO CLEAN COMPLETELY; preserve original Homework implementation.
-source = onyxReplaceBetween(
-    source,
-    'local cleanButton = makeButton(',
-    'local farmButton = makeButton(',
-    ''
+-- REMOVE AUTO CLEAN COMPLETELY. Use tolerant source transforms so
+-- core formatting/version differences cannot abort the boot.
+source = source:gsub(
+    "local cleanButton = makeButton%([%s%S]-local farmButton = makeButton%(",
+    "local farmButton = makeButton(",
+    1
 )
-source = onyxReplaceBetween(
-    source,
-    '    cleanButton.Text = enabled',
-    '    farmButton.Text = autoFarm',
-    ''
+source = source:gsub(
+    "    cleanButton%.Text = enabled.-    farmButton%.Text = autoFarm",
+    "    farmButton.Text = autoFarm",
+    1
 )
-source = onyxReplaceBetween(
-    source,
-    'connect(cleanButton.Activated, function()',
-    'connect(homeworkButton.Activated, function()',
-    ''
+source = source:gsub(
+    "connect%(%s*cleanButton%.Activated,%s*function%(%)[%s%S]-connect%(%s*homeworkButton%.Activated,",
+    "connect(homeworkButton.Activated,",
+    1
 )
-source = onyxReplaceBetween(
-    source,
-    '-- AUTO CLEANER LOOP',
-    '-- AUTO FARM LOOP',
-    ''
+source = source:gsub(
+    "%-%- AUTO CLEANER LOOP[%s%S]-%-%- AUTO FARM LOOP",
+    "-- AUTO FARM LOOP",
+    1
 )
-source = source:gsub('print("AUTO CLEAN READY")%s*', '')
+source = source:gsub('print%("AUTO CLEAN READY"%)%s*', '')
 
 source = onyxReplaceBetween(
     source,
@@ -1030,22 +1027,7 @@ end
 
 
 
--- AUTO CLEAN: cek deklarasi tanpa mengunci helper pembuat tombol.
-assert(source:find("local cleanButton", 1, true),
-    "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
-
-source = onyxReplaceLineStrict(
-    source,
-    'local cleanButton = makeToggle("CleanButton", "CLEANER", 12, 58, 88)',
-    'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)',
-    "AUTO CLEAN GUI LABEL"
-)
-source = onyxReplaceLineStrict(
-    source,
-    '    paintToggle(cleanButton, "CLEANER", enabled)',
-    '    paintToggle(cleanButton, "AUTO CLEAN", enabled)',
-    "AUTO CLEAN UPDATE LABEL"
-)
+-- Auto Clean UI patch intentionally removed; no cleaner control or worker is injected.
 
 
 -- HOMEWORK: RESOLVE PROMPT PART, INCLUDING ATTACHMENT PARENTS.
@@ -1344,8 +1326,7 @@ end
 
 
 
--- AUTO CLEAN tetap menggunakan cleanButton asli dari GUI utama.
--- Tidak membuat tombol duplikat atau menimpa posisi tombol Homework.
+-- Auto Clean has been removed from Onyx.
 
 -- No runtime replacement is needed.
 

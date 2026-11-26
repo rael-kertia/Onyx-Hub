@@ -32,7 +32,7 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V7 - 8 CANDIDATES + COMPUTE TIMEOUT")
+    pathDiag("APPROACH PATCH V14 - TARGET HOUSE DOOR COLLISION")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
@@ -62,6 +62,15 @@ local function hwMove(prompt)
 
     local pathService = game:GetService("PathfindingService")
     local destination = q.Position
+    local houseFolder = W:FindFirstChild("KosanSpawned")
+    local promptHouse = prompt
+    while promptHouse and promptHouse.Parent ~= houseFolder do
+        promptHouse = promptHouse.Parent
+    end
+    if not promptHouse or promptHouse.Parent ~= houseFolder then
+        pathDiag("RUMAH TARGET PROMPT TIDAK DITEMUKAN")
+        return false
+    end
     local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
     local lastPathError = "BELUM ADA KANDIDAT"
 
@@ -179,20 +188,18 @@ local function hwMove(prompt)
         return false
     end
 
-    local function phaseDoorPartsNearSegment(fromPosition, toPosition)
-        local segment = toPosition - fromPosition
-        local lengthSquared = segment:Dot(segment)
+    local function phaseDoorPartsNearSegment(fromPosition, toPosition, targetHouse)
+        -- Scanner menemukan daun pintu aktual di rumah target sebagai:
+        -- KosanSpawned/<rumah>/Door/Door/Door (CanCollide=true, Anchored=true).
+        -- Jangan scan seluruh Workspace: hanya daun pintu di rumah prompt yang sedang dikerjakan.
         local changed = {}
-        local descendants = W:GetDescendants()
-        for _, part in ipairs(descendants) do
-            if part:IsA("BasePart") and part.CanCollide and isDoorPart(part) then
-                local relative = part.Position - fromPosition
-                local alpha = lengthSquared > 0 and math.clamp(relative:Dot(segment) / lengthSquared, 0, 1) or 0
-                local nearest = fromPosition + segment * alpha
-                if (part.Position - nearest).Magnitude <= 4.5 then
-                    changed[part] = part.CanCollide
-                    part.CanCollide = false
-                end
+        if not targetHouse or not targetHouse.Parent then return changed, 0 end
+        for _, part in ipairs(targetHouse:GetDescendants()) do
+            if part:IsA("BasePart")
+            and part.CanCollide
+            and string.lower(part.Name) == "door" then
+                changed[part] = part.CanCollide
+                part.CanCollide = false
             end
         end
         local count = 0
@@ -338,7 +345,7 @@ local function hwMove(prompt)
                             local currentRoot = hwRoot()
                             if currentRoot then
                                 phasedDoorParts, phasedDoorCount =
-                                    phaseDoorPartsNearSegment(currentRoot.Position, waypoint.Position)
+                                    phaseDoorPartsNearSegment(currentRoot.Position, waypoint.Position, promptHouse)
                                 if phasedDoorCount > 0 then
                                     phasedDoorUntil = os.clock() + 5
                                     pathDiag("COLLISION PINTU DIMATIKAN SEMENTARA: "

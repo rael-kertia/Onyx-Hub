@@ -1369,19 +1369,13 @@ local function hwGet(house, mode)
 
         elseif (mode == 2 or mode == 4)
         and object.Name == "TrashBag"
-        and (object:IsA("BasePart")
-            or object:IsA("Model")
-            or object:IsA("Folder")) then
-
+        and (object:IsA("BasePart") or object:IsA("Model") or object:IsA("Folder")) then
             for _, prompt in ipairs(object:GetDescendants()) do
                 if prompt:IsA("ProximityPrompt") then
                     local action = (prompt.ActionText or ""):lower()
                     local isTake = prompt.Name == "AmbilPrompt"
                         or action:find("ambil", 1, true) ~= nil
-
-                    if isTake
-                    and (mode == 4 or prompt.Enabled)
-                    and not seen[prompt] then
+                    if isTake and (mode == 4 or prompt.Enabled) and not seen[prompt] then
                         seen[prompt] = true
                         table.insert(result, prompt)
                     end
@@ -1390,7 +1384,71 @@ local function hwGet(house, mode)
         end
     end
 
+    -- Sort by world height first: all floor-1 tasks before floor-2 tasks.
+    local function promptPosition(prompt)
+        local parent = prompt and prompt.Parent
+        if parent and parent:IsA("Attachment") then return parent.WorldPosition end
+        local part = hwPart(prompt)
+        return part and part.Position or Vector3.zero
+    end
+
+    table.sort(result, function(a, b)
+        local pa, pb = promptPosition(a), promptPosition(b)
+        if math.abs(pa.Y - pb.Y) > 0.5 then return pa.Y < pb.Y end
+        if math.abs(pa.X - pb.X) > 0.5 then return pa.X < pb.X end
+        if math.abs(pa.Z - pb.Z) > 0.5 then return pa.Z < pb.Z end
+        return a:GetFullName() < b:GetFullName()
+    end)
+
     return result
+end
+]=]
+)
+
+-- Detect the owned house from outside by its bounding box. No prompt-range
+-- requirement and no requirement that the player already be inside.
+source = onyxReplaceBetween(
+    source,
+    "local function hwFindHouse()",
+    "local function hwNearestOwnedHouse()",
+    [=[
+local function hwFindHouse()
+    local folder = W:FindFirstChild("KosanSpawned")
+    local root = hwRoot()
+    if not folder or not root then return nil end
+
+    local bestWithTasks, bestTaskDistance
+    local nearestOwned, nearestOwnedDistance
+
+    for _, house in ipairs(folder:GetChildren()) do
+        if hwOwnsHouse(house) then
+            local ok, boxCF, boxSize = pcall(function()
+                return house:GetBoundingBox()
+            end)
+
+            if ok and boxCF and boxSize then
+                local p = root.Position
+                local half = boxSize * 0.5
+                local nearestPoint = Vector3.new(
+                    math.clamp(p.X, boxCF.Position.X - half.X, boxCF.Position.X + half.X),
+                    math.clamp(p.Y, boxCF.Position.Y - half.Y, boxCF.Position.Y + half.Y),
+                    math.clamp(p.Z, boxCF.Position.Z - half.Z, boxCF.Position.Z + half.Z)
+                )
+                local distance = (p - nearestPoint).Magnitude
+
+                if not nearestOwnedDistance or distance < nearestOwnedDistance then
+                    nearestOwned, nearestOwnedDistance = house, distance
+                end
+
+                if #hwGet(house, 3) > 0
+                and (not bestTaskDistance or distance < bestTaskDistance) then
+                    bestWithTasks, bestTaskDistance = house, distance
+                end
+            end
+        end
+    end
+
+    return bestWithTasks or nearestOwned
 end
 ]=]
 )

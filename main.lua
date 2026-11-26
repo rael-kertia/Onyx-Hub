@@ -1,12 +1,73 @@
 -- ONYX HUB | MAIN LOADER
--- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
+-- Bootstrap diagnostic is visible; no Delta console required.
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-pathfinding-diag-20261126"
-local response = game:HttpGet(url)
-assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
-local chunk, compileError = loadstring(response)
-assert(type(chunk) == "function", "ONYX HUB: kompilasi gagal: " .. tostring(compileError))
-chunk()
+local bootGui, bootLabel
+local function bootStatus(message, failed)
+    pcall(function()
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local playerGui = player:WaitForChild("PlayerGui", 10)
+        if not playerGui then return end
+
+        if not bootGui then
+            local old = playerGui:FindFirstChild("OnyxLoaderStatus")
+            if old then old:Destroy() end
+            bootGui = Instance.new("ScreenGui")
+            bootGui.Name = "OnyxLoaderStatus"
+            bootGui.ResetOnSpawn = false
+            bootGui.DisplayOrder = 99999
+            bootGui.Parent = playerGui
+
+            local panel = Instance.new("Frame")
+            panel.Size = UDim2.new(1, -24, 0, 72)
+            panel.Position = UDim2.new(0, 12, 0, 12)
+            panel.BackgroundColor3 = Color3.fromRGB(17, 37, 49)
+            panel.BorderSizePixel = 0
+            panel.Parent = bootGui
+            Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 9)
+
+            bootLabel = Instance.new("TextLabel")
+            bootLabel.Size = UDim2.new(1, -20, 1, -12)
+            bootLabel.Position = UDim2.fromOffset(10, 6)
+            bootLabel.BackgroundTransparency = 1
+            bootLabel.TextColor3 = Color3.new(1, 1, 1)
+            bootLabel.TextWrapped = true
+            bootLabel.TextSize = 12
+            bootLabel.Font = Enum.Font.GothamBold
+            bootLabel.Parent = panel
+        end
+
+        bootLabel.Text = "ONYX LOADER: " .. tostring(message)
+        local panel = bootGui:FindFirstChildOfClass("Frame")
+        if panel then
+            panel.BackgroundColor3 = failed
+                and Color3.fromRGB(75, 23, 30)
+                or Color3.fromRGB(17, 37, 49)
+        end
+        if failed then
+            local report = "ONYX LOADER ERROR: " .. tostring(message)
+            if typeof(setclipboard) == "function" then setclipboard(report) end
+        end
+    end)
+end
+
+bootStatus("MENGUNDUH CORE...", false)
+local bootOK, bootError = pcall(function()
+    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-pathfinding-diag-20261126"
+    local response = game:HttpGet(url)
+    assert(type(response) == "string" and #response > 10000, "CORE GAGAL DIUNDUH")
+    bootStatus("CORE DIUNDUH - KOMPILASI...", false)
+    local chunk, compileError = loadstring(response)
+    assert(type(chunk) == "function", "KOMPILASI GAGAL: " .. tostring(compileError))
+    bootStatus("MENJALANKAN CORE...", false)
+    chunk()
+end)
+
+if not bootOK then
+    bootStatus("GAGAL: " .. tostring(bootError):sub(1, 240) .. " | tekan SALIN ERROR? gunakan clipboard bila tersedia", true)
+else
+    if bootGui then bootGui:Destroy() end
+end
 
 -- =========================================================
 -- ONYX TEST: AUTO CLEAN PORT DARI RAEL-TRICKS/base.lua

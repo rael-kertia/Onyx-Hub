@@ -67,7 +67,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-core-refresh-20261126j"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-core-refresh-20261126k"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -975,10 +975,8 @@ end
 
 
 
--- AUTO CLEAN BUTTON: GUI core saat ini memakai makeButton multiline.
--- cleanButton dibuat di guiCode; jangan mencari signature makeToggle lama.
-assert(source:find('local cleanButton = makeToggle(', 1, true)
-    or source:find('local cleanButton = makeButton(', 1, true),
+-- AUTO CLEAN: cek deklarasi tanpa mengunci helper pembuat tombol.
+assert(source:find("local cleanButton", 1, true),
     "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
 
 
@@ -1021,39 +1019,48 @@ local function hwMove(prompt)
     local root = hwRoot()
     local targetPart = hwPart(prompt)
 
-    if not humanoid or humanoid.Health <= 0 or not root or not targetPart then
+    if not prompt or not prompt.Parent or not targetPart
+    or not humanoid or humanoid.Health <= 0 or not root then
         setStatus("HOMEWORK: TARGET PROMPT TIDAK VALID")
         return false
     end
 
+    -- Lepas dari kursi, lalu tunggu karakter benar-benar menyentuh lantai.
     hwForceStand()
-    character = player.Character
-    humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    root = hwRoot()
-    if not humanoid or not root then return false end
+    local groundedDeadline = os.clock() + 3
+    repeat
+        if not alive() or not homeworkEnabled then return false end
+        character = player.Character
+        humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        root = hwRoot()
+        if not humanoid or not root or humanoid.Health <= 0 then return false end
+        if humanoid.FloorMaterial ~= Enum.Material.Air then break end
+        task.wait(0.1)
+    until os.clock() >= groundedDeadline
 
-    local promptParent = prompt.Parent
-    local promptPosition
-    if promptParent and promptParent:IsA("Attachment") then
-        promptPosition = promptParent.WorldPosition
-    else
-        promptPosition = targetPart.Position
+    if humanoid.FloorMaterial == Enum.Material.Air then
+        setStatus("PATHFINDING: KARAKTER BELUM MENYENTUH LANTAI")
+        return false
     end
 
-    -- Cari titik lantai di sekitar prompt. Tujuan path tidak boleh
-    -- berada di tengah part, menempel pada tembok, atau di udara.
+    local promptParent = prompt.Parent
+    local promptPosition = (
+        promptParent and promptParent:IsA("Attachment")
+    ) and promptParent.WorldPosition or targetPart.Position
+
+    -- Jangan exclude targetPart: permukaan target bisa menjadi lantai navigasi.
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {character, targetPart}
+    rayParams.FilterDescendantsInstances = {character}
     rayParams.IgnoreWater = true
     rayParams.RespectCanCollide = true
 
     local offsets = {
         Vector3.new(0, 0, 0),
-        Vector3.new(3.5, 0, 0), Vector3.new(-3.5, 0, 0),
-        Vector3.new(0, 0, 3.5), Vector3.new(0, 0, -3.5),
-        Vector3.new(4.5, 0, 4.5), Vector3.new(-4.5, 0, 4.5),
-        Vector3.new(4.5, 0, -4.5), Vector3.new(-4.5, 0, -4.5)
+        Vector3.new(2.5, 0, 0), Vector3.new(-2.5, 0, 0),
+        Vector3.new(0, 0, 2.5), Vector3.new(0, 0, -2.5),
+        Vector3.new(4, 0, 4), Vector3.new(-4, 0, 4),
+        Vector3.new(4, 0, -4), Vector3.new(-4, 0, -4)
     }
 
     local function findBestPath()
@@ -1064,18 +1071,23 @@ local function hwMove(prompt)
         for _, offset in ipairs(offsets) do
             if not alive() or not homeworkEnabled then return nil end
 
-            local rayOrigin = promptPosition + offset + Vector3.new(0, 8, 0)
-            local hit = workspace:Raycast(rayOrigin, Vector3.new(0, -20, 0), rayParams)
+            local rayOrigin = promptPosition + offset + Vector3.new(0, 12, 0)
+            local hit = workspace:Raycast(rayOrigin, Vector3.new(0, -32, 0), rayParams)
 
             if hit and hit.Normal.Y >= 0.65
-            and math.abs(hit.Position.Y - promptPosition.Y) <= 6 then
-                local goal = hit.Position + Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2 + 0.15, 0)
+            and math.abs(hit.Position.Y - promptPosition.Y) <= 7 then
+                local goal = hit.Position + Vector3.new(
+                    0,
+                    humanoid.HipHeight + root.Size.Y / 2 + 0.15,
+                    0
+                )
+
                 local path = PathfindingService:CreatePath({
-                    AgentRadius = 1.5,
+                    AgentRadius = 1.25,
                     AgentHeight = 5,
                     AgentCanJump = true,
-                    AgentCanClimb = false,
-                    WaypointSpacing = 2.5
+                    AgentCanClimb = true,
+                    WaypointSpacing = 2
                 })
 
                 local computed = pcall(function()
@@ -1084,12 +1096,14 @@ local function hwMove(prompt)
 
                 if computed and path.Status == Enum.PathStatus.Success then
                     local waypoints = path:GetWaypoints()
-                    local score = (goal - currentRoot.Position).Magnitude
-                        + (#waypoints * 0.35)
-                    if #waypoints > 0 and (not bestScore or score < bestScore) then
-                        bestPath = path
-                        bestGoal = goal
-                        bestScore = score
+                    if #waypoints > 0 then
+                        local score = (goal - currentRoot.Position).Magnitude
+                            + (#waypoints * 0.35)
+                        if not bestScore or score < bestScore then
+                            bestPath = path
+                            bestGoal = goal
+                            bestScore = score
+                        end
                     end
                 end
             end
@@ -1098,8 +1112,7 @@ local function hwMove(prompt)
         return bestPath, bestGoal
     end
 
-    -- Maksimal tiga percobaan: hitung ulang jika jalur terhalang
-    -- atau karakter gagal mencapai waypoint.
+    -- Repath maksimal tiga kali bila waypoint terhalang atau tidak tercapai.
     for attempt = 1, 3 do
         if not alive() or not homeworkEnabled then return false end
 
@@ -1108,7 +1121,7 @@ local function hwMove(prompt)
 
         local path, goal = findBestPath()
         if not path or not goal then
-            setStatus("PATHFINDING: LANTAI/RUTE TIDAK DITEMUKAN")
+            setStatus("PATHFINDING: RUTE KE LANTAI TARGET TIDAK DITEMUKAN")
             return false
         end
 
@@ -1124,11 +1137,7 @@ local function hwMove(prompt)
         local routeOK = true
         for index, waypoint in ipairs(waypoints) do
             currentWaypoint = index
-            if not alive() or not homeworkEnabled then
-                routeOK = false
-                break
-            end
-            if blockedAhead then
+            if not alive() or not homeworkEnabled or blockedAhead then
                 routeOK = false
                 break
             end
@@ -1142,8 +1151,7 @@ local function hwMove(prompt)
             end
 
             local distance = (waypoint.Position - root.Position).Magnitude
-
-            if distance > 2.0 then
+            if distance > 2 then
                 if waypoint.Action == Enum.PathWaypointAction.Jump then
                     humanoid.Jump = true
                 end
@@ -1162,8 +1170,7 @@ local function hwMove(prompt)
                     root = hwRoot()
                     if not root then break end
 
-                    local remaining = (waypoint.Position - root.Position).Magnitude
-                    if remaining <= 2.5 then
+                    if (waypoint.Position - root.Position).Magnitude <= 2.5 then
                         reached = true
                         break
                     end
@@ -1181,9 +1188,12 @@ local function hwMove(prompt)
 
         if routeOK and not blockedAhead then
             root = hwRoot()
-            if root then
-                local distance = (root.Position - promptPosition).Magnitude
-                if distance <= 10 then
+            if root and prompt.Parent then
+                local interactionRange = math.max(
+                    4,
+                    math.min(tonumber(prompt.MaxActivationDistance) or 10, 10) - 0.5
+                )
+                if (root.Position - promptPosition).Magnitude <= interactionRange then
                     return true
                 end
             end
@@ -1197,11 +1207,11 @@ local function hwMove(prompt)
 
         if attempt < 3 then
             setStatus("PATHFINDING: HITUNG ULANG RUTE " .. tostring(attempt + 1) .. "/3")
-            task.wait(0.2)
+            task.wait(0.25)
         end
     end
 
-    setStatus("PATHFINDING: GAGAL MENCAPAI PROMPT")
+    setStatus("PATHFINDING: GAGAL MENCAPAI AREA PROMPT")
     return false
 end
 ]=]
@@ -1213,54 +1223,8 @@ end
 
 
 
--- GUARANTEED AUTO CLEAN CONTROL: pinned outside the scrolling content.
-source = source .. [====[
-do
-    if cleanButton then
-        cleanButton.Visible = false
-    end
-
-    local pinnedClean = Instance.new("TextButton")
-    pinnedClean.Name = "OnyxAutoCleanButton"
-    pinnedClean.Size = UDim2.new(1, -72, 0, 36)
-    pinnedClean.Position = UDim2.fromOffset(62, 48)
-    pinnedClean.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
-    pinnedClean.BorderSizePixel = 0
-    pinnedClean.TextColor3 = Color3.fromRGB(225, 239, 250)
-    pinnedClean.TextSize = 11
-    pinnedClean.Font = Enum.Font.GothamBold
-    pinnedClean.Text = "AUTO CLEAN: OFF"
-    pinnedClean.ZIndex = 60
-    pinnedClean.Parent = frame
-    Instance.new("UICorner", pinnedClean).CornerRadius = UDim.new(0, 8)
-
-    local pinnedStroke = Instance.new("UIStroke")
-    pinnedStroke.Color = Color3.fromRGB(73, 130, 145)
-    pinnedStroke.Thickness = 1
-    pinnedStroke.Parent = pinnedClean
-
-    local function paintPinnedClean()
-        pinnedClean.Text = enabled and "AUTO CLEAN: ON" or "AUTO CLEAN: OFF"
-        pinnedClean.BackgroundColor3 = enabled
-            and Color3.fromRGB(5, 120, 90)
-            or Color3.fromRGB(22, 36, 54)
-    end
-
-    connect(pinnedClean.Activated, function()
-        if not alive() or autoFarm or homeworkEnabled or homeworkBusy then return end
-        enabled = not enabled
-        updateButtons()
-        paintPinnedClean()
-    end)
-
-    if contentScroll then
-        contentScroll.Position = UDim2.fromOffset(58, 91)
-        contentScroll.Size = UDim2.new(1, -64, 1, -97)
-    end
-
-    paintPinnedClean()
-end
-]====]
+-- AUTO CLEAN tetap menggunakan cleanButton asli dari GUI utama.
+-- Tidak membuat tombol duplikat atau menimpa posisi tombol Homework.
 
 -- No runtime replacement is needed.
 

@@ -1,7 +1,7 @@
 -- ONYX HUB | MAIN LOADER
 -- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-2"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-3"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -28,7 +28,7 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("HW MOVE START")
+    pathDiag("APPROACH PATCH V3 - HW MOVE START")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
@@ -204,7 +204,7 @@ local function hwMove(prompt)
     end
 
     if not reached then
-        pathDiag("FAILED AFTER 2 ATTEMPTS; LAST=" .. tostring(getgenv().ONYX_HW_PATH_DIAG))
+        pathDiag("APPROACH SEARCH FAILED AFTER 3 ATTEMPTS; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end

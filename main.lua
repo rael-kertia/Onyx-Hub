@@ -1,6 +1,6 @@
 -- ONYX HUB | MAIN LOADER
 -- Tidak membuat GUI/status panel tambahan.
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126t"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126u"
 
 local ok, err = pcall(function()
     local response = game:HttpGet(url)

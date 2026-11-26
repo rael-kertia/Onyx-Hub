@@ -323,6 +323,35 @@ local function gachaCycle()
     end
 end]=]
 
+
+
+-- REMOVE AUTO CLEAN COMPLETELY; preserve original Homework implementation.
+source = onyxReplaceBetween(
+    source,
+    'local cleanButton = makeButton(',
+    'local farmButton = makeButton(',
+    ''
+)
+source = onyxReplaceBetween(
+    source,
+    '    cleanButton.Text = enabled',
+    '    farmButton.Text = autoFarm',
+    ''
+)
+source = onyxReplaceBetween(
+    source,
+    'connect(cleanButton.Activated, function()',
+    'connect(homeworkButton.Activated, function()',
+    ''
+)
+source = onyxReplaceBetween(
+    source,
+    '-- AUTO CLEANER LOOP',
+    '-- AUTO FARM LOOP',
+    ''
+)
+source = source:gsub('print("AUTO CLEAN READY")%s*', '')
+
 source = onyxReplaceBetween(
     source,
     "local function getGachaService()",
@@ -1310,332 +1339,6 @@ end
 -- Hanya hwMove yang diganti menjadi Pathfinding; deteksi rumah/prompt
 -- tidak disentuh oleh wrapper.
 
--- AUTO CLEAN V18.2: pertahankan loop asli core dan ubah hanya guard
--- yang sebelumnya menghentikan seluruh loop saat TrashBag sedang dibawa.
--- Tidak bergantung pada marker Auto Farm Loop.
-local oldCleanGuard = [=[
-        if not enabled or busy
-        or homeworkEnabled or homeworkBusy
-        or hwCarrying() then
-            continue
-        end]=]
-local newCleanGuard = [=[
-        if not enabled or busy or homeworkEnabled or homeworkBusy then
-            continue
-        end]=]
-local cleanGuardAt = source:find(oldCleanGuard, 1, true)
-assert(cleanGuardAt, "AUTO CLEAN PATCH: guard asli tidak ditemukan")
-assert(not source:find(oldCleanGuard, cleanGuardAt + #oldCleanGuard, true),
-    "AUTO CLEAN PATCH: guard asli duplikat")
-source = source:sub(1, cleanGuardAt - 1)
-    .. newCleanGuard
-    .. source:sub(cleanGuardAt + #oldCleanGuard)
-
--- HOMEWORK FLOOR PRIORITY:
--- Kunci task ke lantai terendah yang masih memiliki prompt Bersihkan
--- atau TrashBag. Prompt lantai atas tidak boleh menyela lantai bawah.
-source = onyxReplaceBetween(
-    source,
-    "local function hwGet(house, mode)",
-    "local function hwFindHouse()",
-    [====[
-local function hwFloorAnchor(house)
-    if not house then return nil end
-    local lowestY
-
-    for _, object in ipairs(house:GetDescendants()) do
-        local position
-
-        if object:IsA("ProximityPrompt")
-        and object.ActionText == "Bersihkan" then
-            local part = hwPart(object)
-            if part then position = part.Position end
-
-        elseif object:IsA("BasePart") and object.Name == "TrashBag" then
-            local prompt = object:FindFirstChild("AmbilPrompt")
-            if prompt and prompt:IsA("ProximityPrompt") then
-                position = object.Position
-            end
-        end
-
-        if position and (not lowestY or position.Y < lowestY) then
-            lowestY = position.Y
-        end
-    end
-
-    return lowestY
-end
-
-local function hwGet(house, mode)
-    local result = {}
-    if not house then return result end
-
-    local floorY = hwFloorAnchor(house)
-    local FLOOR_BAND = 6
-
-    for _, object in ipairs(house:GetDescendants()) do
-        if mode == 1
-        and object:IsA("ProximityPrompt")
-        and object.ActionText == "Bersihkan"
-        and object.Enabled then
-            local part = hwPart(object)
-            if part and (not floorY or part.Position.Y <= floorY + FLOOR_BAND) then
-                table.insert(result, object)
-            end
-
-        elseif mode == 3
-        and object:IsA("ProximityPrompt")
-        and object.ActionText == "Bersihkan" then
-            table.insert(result, object)
-
-        elseif mode == 2
-        and object:IsA("BasePart")
-        and object.Name == "TrashBag" then
-            local prompt = object:FindFirstChild("AmbilPrompt")
-            if prompt and prompt:IsA("ProximityPrompt") and prompt.Enabled
-            and (not floorY or object.Position.Y <= floorY + FLOOR_BAND) then
-                table.insert(result, prompt)
-            end
-        end
-    end
-
-    table.sort(result, function(a, b)
-        local pa = hwPart(a)
-        local pb = hwPart(b)
-        if not pa then return false end
-        if not pb then return true end
-        return pa.Position.Y < pb.Position.Y
-    end)
-
-    return result
-end
-]====]
-)
-
--- HOMEWORK PATHFINDING:
--- Gunakan algoritma adaptif Rael Farm AutoClean (9 titik pendekatan,
--- pilih rute terpendek, deteksi macet, dan hitung ulang hingga 7 kali).
-source = onyxReplaceBetween(
-    source,
-    "local function hwMove(prompt)",
-    "local function hwUse(prompt)",
-    [====[
-local function hwMove(prompt)
-    if not alive() or not homeworkEnabled or not prompt or not prompt.Parent then
-        return false
-    end
-
-    local PathfindingService = game:GetService("PathfindingService")
-    local character = player.Character
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    local root = hwRoot()
-    local targetPart = hwPart(prompt)
-    if not humanoid or not root or not targetPart or humanoid.Health <= 0 then
-        return false
-    end
-
-    hwForceStand()
-    local promptParent = prompt.Parent
-    local position = promptParent:IsA("Attachment")
-        and promptParent.WorldPosition or targetPart.Position
-    local activationDistance = tonumber(prompt.MaxActivationDistance) or 10
-    local arrivalDistance = math.max(2.5, math.min(activationDistance - 1, 8))
-    local offsets = {
-        Vector3.new(0, 0, 0),
-        Vector3.new(3, 0, 0),
-        Vector3.new(-3, 0, 0),
-        Vector3.new(0, 0, 3),
-        Vector3.new(0, 0, -3),
-        Vector3.new(2.5, 0, 2.5),
-        Vector3.new(-2.5, 0, 2.5),
-        Vector3.new(2.5, 0, -2.5),
-        Vector3.new(-2.5, 0, -2.5)
-    }
-
-    for replan = 1, 7 do
-        if not alive() or not homeworkEnabled then
-            root = hwRoot()
-            if root then humanoid:MoveTo(root.Position) end
-            return false
-        end
-
-        character = player.Character
-        humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        root = hwRoot()
-        if not humanoid or not root or humanoid.Health <= 0 then return false end
-        if (root.Position - position).Magnitude <= arrivalDistance then return true end
-
-        local bestPath, bestDistance
-        for _, offset in ipairs(offsets) do
-            if not alive() or not homeworkEnabled then return false end
-            root = hwRoot()
-            if not root then return false end
-
-            local candidate = PathfindingService:CreatePath({
-                AgentRadius = 2,
-                AgentHeight = 5,
-                AgentCanJump = true,
-                AgentCanClimb = true,
-                WaypointSpacing = 3
-            })
-
-            local ok = pcall(function()
-                candidate:ComputeAsync(root.Position, position + offset)
-            end)
-
-            if ok and candidate.Status == Enum.PathStatus.Success then
-                local waypoints = candidate:GetWaypoints()
-                local distance = 0
-                for index = 2, #waypoints do
-                    distance += (waypoints[index].Position - waypoints[index - 1].Position).Magnitude
-                end
-                if not bestDistance or distance < bestDistance then
-                    bestPath = candidate
-                    bestDistance = distance
-                end
-            end
-        end
-
-        if not bestPath then
-            task.wait(0.2)
-        else
-            local waypoints = bestPath:GetWaypoints()
-            local blocked = false
-            local blockedConnection = bestPath.Blocked:Connect(function(blockedIndex)
-                if blockedIndex >= 1 then blocked = true end
-            end)
-
-            for _, waypoint in ipairs(waypoints) do
-                if not alive() or not homeworkEnabled then
-                    blockedConnection:Disconnect()
-                    root = hwRoot()
-                    if root then humanoid:MoveTo(root.Position) end
-                    return false
-                end
-
-                character = player.Character
-                humanoid = character and character:FindFirstChildOfClass("Humanoid")
-                root = hwRoot()
-                if not humanoid or not root then
-                    blockedConnection:Disconnect()
-                    return false
-                end
-
-                if (root.Position - position).Magnitude <= arrivalDistance then
-                    blockedConnection:Disconnect()
-                    return true
-                end
-
-                if (root.Position - waypoint.Position).Magnitude > 3 then
-                    if waypoint.Action == Enum.PathWaypointAction.Jump then
-                        humanoid.Jump = true
-                    end
-
-                    humanoid:MoveTo(waypoint.Position)
-                    local lastPosition = root.Position
-                    local lastProgress = os.clock()
-                    local reached = false
-
-                    while alive() and homeworkEnabled and os.clock() - lastProgress < 3.5 do
-                        task.wait(0.15)
-                        root = hwRoot()
-                        if not root then break end
-
-                        if (root.Position - position).Magnitude <= arrivalDistance
-                        or (root.Position - waypoint.Position).Magnitude <= 2.5 then
-                            reached = true
-                            break
-                        end
-
-                        if (root.Position - lastPosition).Magnitude >= 0.7 then
-                            lastPosition = root.Position
-                            lastProgress = os.clock()
-                        elseif os.clock() - lastProgress >= 1.1 then
-                            break
-                        end
-
-                        if blocked then break end
-                    end
-
-                    if not alive() or not homeworkEnabled then
-                        blockedConnection:Disconnect()
-                        return false
-                    end
-
-                    root = hwRoot()
-                    if not root then
-                        blockedConnection:Disconnect()
-                        return false
-                    end
-
-                    if (root.Position - position).Magnitude <= arrivalDistance then
-                        blockedConnection:Disconnect()
-                        return true
-                    end
-
-                    if not reached and (root.Position - waypoint.Position).Magnitude > 3 then
-                        blocked = true
-                        break
-                    end
-                    if blocked then break end
-                end
-            end
-
-            blockedConnection:Disconnect()
-            root = hwRoot()
-            if root and (root.Position - position).Magnitude <= activationDistance then
-                return true
-            end
-        end
-
-        task.wait(0.15)
-    end
-
-    setStatus("HOMEWORK: PATHFINDING GAGAL SETELAH 7 REPLAN")
-    return false
-end
-]====]
-)
-
--- AUTO CLEAN: gunakan filter dan pemilihan prompt dari Rael_Farm_AutoClean.
--- Hanya target ActionText "Bersihkan", bukan prompt ambil/buang.
-source = onyxReplaceBetween(
-    source,
-    "local function getNearest(root)",
-    "-- ==========================================\n-- DROPPING SCANNER",
-    [====[
-local function getNearest(root)
-    local now = os.clock()
-    local nearest
-    local shortest = math.huge
-
-    for prompt in pairs(prompts) do
-        if prompt.Parent and prompt.Enabled and isAllowed(prompt) then
-            local action = (prompt.ActionText or ""):lower()
-            if action:find("bersihkan", 1, true) then
-                local last = lastAttempt[prompt]
-                local ready = not last or now - last >= RETRY_DELAY
-
-                if ready then
-                    local position = getPosition(prompt)
-                    if position then
-                        local distance = (root.Position - position).Magnitude
-                        if distance <= RANGE_CLEAN and distance < shortest then
-                            nearest = prompt
-                            shortest = distance
-                        end
-                    end
-                end
-            end
-        end
-    end
-
-    return nearest
-end
-]====]
-)
-
-    
 -- Farm, Feed, and Convert controls remain absent; Auto Clean stays enabled in GUI.
 
 

@@ -225,35 +225,44 @@ task.spawn(function()
                 end
                 local folder = W:FindFirstChild("KosanSpawned")
                 local houses = folder and folder:GetChildren() or {}
-                local ownedCount, promptCount, enabledCount = 0, 0, 0
+                local ownedCount, activeOwnedCount, inactiveOwnedCount = 0, 0, 0
+                local promptCount, enabledCount = 0, 0
                 add("HOMEWORK", homeworkEnabled)
                 add("PLAYER_USER_ID", player.UserId)
                 add("ROOT", hwRoot() and tostring(hwRoot().Position) or "NIL")
                 add("KOSANSPAWNED", folder and "ADA" or "NIL")
-                add("JUMLAH_RUMAH", #houses)
+                add("JUMLAH_INSTANCE_TOTAL", #houses)
                 for _, house in ipairs(houses) do
                     local owner = house:GetAttribute("OwnerUserId")
                     local isOwned = hwOwnsHouse(house)
+                    local state = house:GetAttribute("KosanState")
+                    local isActiveOwned = isOwned and state == "Disewa"
                     if isOwned then ownedCount = ownedCount + 1 end
-                    local total, enabled = 0, 0
-                    for _, obj in ipairs(house:GetDescendants()) do
-                        if obj:IsA("ProximityPrompt") and obj.ActionText == "Bersihkan" then
-                            total = total + 1
-                            promptCount = promptCount + 1
-                            if obj.Enabled then
-                                enabled = enabled + 1
-                                enabledCount = enabledCount + 1
+                    if isActiveOwned then
+                        activeOwnedCount = activeOwnedCount + 1
+                        local total, enabled = 0, 0
+                        for _, obj in ipairs(house:GetDescendants()) do
+                            if obj:IsA("ProximityPrompt") and obj.ActionText == "Bersihkan" then
+                                total = total + 1
+                                promptCount = promptCount + 1
+                                if obj.Enabled then
+                                    enabled = enabled + 1
+                                    enabledCount = enabledCount + 1
+                                end
                             end
                         end
+                        add("RUMAH_AKTIF_" .. house.Name,
+                            "KosanState=" .. tostring(state)
+                            .. ", Bersihkan=" .. tostring(enabled) .. "/" .. tostring(total))
+                    elseif isOwned then
+                        inactiveOwnedCount = inactiveOwnedCount + 1
                     end
-                    add("RUMAH_" .. house.Name,
-                        "OwnerUserId=" .. tostring(owner)
-                        .. ", owned=" .. tostring(isOwned)
-                        .. ", Bersihkan=" .. tostring(enabled) .. "/" .. tostring(total))
                 end
-                add("RUMAH_MILIK_PLAYER", ownedCount)
+                add("RUMAH_MILIK_PLAYER_TOTAL_INSTANCE", ownedCount)
+                add("RUMAH_AKTIF_MILIK_PLAYER", activeOwnedCount)
+                add("RUMAH_MILIK_PLAYER_TIDAK_DISewa", inactiveOwnedCount)
                 add("PROMPT_BERSIHKAN_AKTIF_TOTAL", enabledCount)
-                add("PROMPT_BERSIHKAN_SEMUA", promptCount)
+                add("PROMPT_BERSIHKAN_SEMUA_RUMAH_AKTIF", promptCount)
                 add("FIND_HOUSE_CALLS", onyxHwDiag.findCalls)
                 add("LAST_STAGE", onyxHwDiag.lastStage)
                 add("LAST_HOUSE", onyxHwDiag.lastHouse or "BELUM ADA")

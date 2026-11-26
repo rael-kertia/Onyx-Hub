@@ -175,7 +175,7 @@ assert(response:find(onyxHomeworkPathfindingMarker, 1, true),
 local onyxHomeworkPathfindingAt = response:find(onyxHomeworkPathfindingMarker, 1, true)
 assert(onyxHomeworkPathfindingAt, "ONYX TEST: marker pathfinding tidak ditemukan (plain search)")
 response = response:sub(1, onyxHomeworkPathfindingAt - 1)
-    .. onyxHomeworkPathfindingPatch .. "\\n"
+    .. onyxHomeworkPathfindingPatch .. "\n"
     .. response:sub(onyxHomeworkPathfindingAt)
 
 local chunk, compileError = loadstring(response)

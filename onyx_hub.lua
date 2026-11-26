@@ -617,9 +617,8 @@ paintJamButton()
 
 
 source = source .. [====[
--- Status remains internal only; remove the visible status panel.
-if statusPanel and statusPanel.Parent then statusPanel:Destroy() end
-local function setStatus(msg) end
+-- Keep the existing status panel: Homework/Pathfinding errors stay visible.
+-- The status object is laid out at the bottom of the feature scroll.
 local exitButton
 do
     -- Core saat ini memakai frame langsung, bukan objek Header terpisah.
@@ -839,48 +838,63 @@ do
     section.ZIndex = 4
     section.Parent = contentScroll
 
-    local redesignedBottom = 108
-    for _, control in ipairs(contentScroll:GetChildren()) do
-        if control:IsA("GuiObject") and control ~= hero and control ~= section then
-            control.Position = UDim2.new(
-                control.Position.X.Scale, control.Position.X.Offset,
-                control.Position.Y.Scale, control.Position.Y.Offset + 108
-            )
-            if control:IsA("TextButton") then
-                control.Size = UDim2.new(1, -24, 0, math.max(32, control.Size.Y.Offset))
-                control.Position = UDim2.new(0, 12, 0, control.Position.Y.Offset)
-                control.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
-                control.TextColor3 = Color3.fromRGB(225, 239, 250)
-                control.Font = Enum.Font.GothamBold
-                control.TextSize = 11
-                control.ZIndex = 5
-                local corner = control:FindFirstChildOfClass("UICorner")
-                if not corner then
-                    corner = Instance.new("UICorner")
-                    corner.Parent = control
-                end
-                corner.CornerRadius = UDim.new(0, 8)
-                local stroke = control:FindFirstChildOfClass("UIStroke") or Instance.new("UIStroke")
-                stroke.Color = Color3.fromRGB(44, 70, 91)
-                stroke.Thickness = 1
-                stroke.Parent = control
-            end
-            redesignedBottom = math.max(redesignedBottom, control.Position.Y.Offset + control.AbsoluteSize.Y + 10)
+    local controls = {}
+    local function addControl(control)
+        if control and control:IsA("TextButton") then
+            table.insert(controls, control)
         end
     end
-    contentScroll.CanvasSize = UDim2.new(0, 0, 0, redesignedBottom + 12)
 
-    -- FINAL AUTO CLEAN PLACEMENT: resolve the actual GUI instance by name.
-    local autoCleanControl = frame:FindFirstChild("CleanButton", true)
-    if autoCleanControl and autoCleanControl:IsA("TextButton") then
-        autoCleanControl.Parent = contentScroll
-        autoCleanControl.Visible = true
-        autoCleanControl.Active = true
-        autoCleanControl.Size = UDim2.new(1, -24, 0, 36)
-        autoCleanControl.Position = UDim2.fromOffset(12, 116)
-        autoCleanControl.ZIndex = 8
-        contentScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(redesignedBottom + 12, 164))
+    -- Explicit vertical order prevents Auto Clean/Homework/AFK/TP overlap.
+    addControl(cleanButton)
+    addControl(homeworkButton)
+    addControl(afkButton)
+    addControl(tpButton)
+    addControl(autoAccButton)
+    addControl(jamButton)
+    addControl(gachaButton)
+    addControl(gachaPaidButton)
+
+    local nextY = 118
+    for _, control in ipairs(controls) do
+        control.Parent = contentScroll
+        control.Visible = true
+        control.Active = true
+        control.Size = UDim2.new(1, -24, 0, 34)
+        control.Position = UDim2.fromOffset(12, nextY)
+        control.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
+        control.TextColor3 = Color3.fromRGB(225, 239, 250)
+        control.Font = Enum.Font.GothamBold
+        control.TextSize = 11
+        control.ZIndex = 5
+
+        local corner = control:FindFirstChildOfClass("UICorner")
+        if not corner then
+            corner = Instance.new("UICorner")
+            corner.Parent = control
+        end
+        corner.CornerRadius = UDim.new(0, 8)
+
+        local stroke = control:FindFirstChildOfClass("UIStroke")
+            or Instance.new("UIStroke")
+        stroke.Color = Color3.fromRGB(44, 70, 91)
+        stroke.Thickness = 1
+        stroke.Parent = control
+
+        nextY += 42
     end
+
+    if statusPanel then
+        statusPanel.Parent = contentScroll
+        statusPanel.Visible = true
+        statusPanel.Size = UDim2.new(1, -24, 0, 42)
+        statusPanel.Position = UDim2.fromOffset(12, nextY)
+        statusPanel.ZIndex = 5
+        nextY += 50
+    end
+
+    contentScroll.AutomaticCanvasSize = Enum.AutomaticSize.None
+    contentScroll.CanvasSize = UDim2.new(0, 0, 0, nextY + 12)
 
     -- Icon rail stays available while the expandable control panel is hidden.
     local rail = Instance.new("Frame")

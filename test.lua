@@ -26,612 +26,87 @@ source = onyxHomeworkReplaceBetween(
     "local function hwMove(prompt)",
     "local function hwUse(prompt)",
     [=[
-local onyxHwComputePending = false
-
 local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V16 - GROUND TP + STUCK JUMP RECOVERY")
-    if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
-    local r = hwRoot()
-    local q = hwPart(prompt)
-    if not r or not q then return false end
-
-    -- Ambil/Buang TrashBag: tetap TP, tetapi mendarat di lantai di samping prompt,
-    -- bukan berdiri di atas tempat sampah. Ini menjaga titik awal Pathfinding valid.
-    if prompt.ActionText ~= "Bersihkan" then
-        hwForceStand()
-        r = hwRoot()
-        if not r then return false end
-
-        local character = player.Character
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = {character, q}
-        rayParams.IgnoreWater = true
-
-        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        local rootOffset = humanoid and (humanoid.HipHeight + r.Size.Y * 0.5) or 3
-        local diagonal = math.sqrt(0.5)
-        local directions = {
-            Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
-            Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
-            Vector3.new(diagonal, 0, diagonal), Vector3.new(diagonal, 0, -diagonal),
-            Vector3.new(-diagonal, 0, diagonal), Vector3.new(-diagonal, 0, -diagonal)
-        }
-        local groundPosition, groundDistance = nil, math.huge
-        local activationRange = math.max(prompt.MaxActivationDistance or 10, 5)
-
-        for _, radius in ipairs({1.5, 2.5, 3.5, 4.5}) do
-            for _, direction in ipairs(directions) do
-                local candidate = q.Position + direction * radius
-                local hit = workspace:Raycast(
-                    candidate + Vector3.new(0, 14, 0),
-                    Vector3.new(0, -60, 0),
-                    rayParams
-                )
-                if hit and hit.Normal.Y >= 0.65 then
-                    local position = Vector3.new(
-                        candidate.X,
-                        hit.Position.Y + rootOffset + 0.12,
-                        candidate.Z
-                    )
-                    local distance = (position - q.Position).Magnitude
-                    if distance <= activationRange and distance < groundDistance then
-                        groundPosition = position
-                        groundDistance = distance
-                    end
-                end
-            end
-            if groundPosition then break end
-        end
-
-        if not groundPosition then
-            pathDiag("TP TRASH DIBATALKAN: LANTAI VALID DI SAMPING PROMPT TIDAK DITEMUKAN")
-            return false
-        end
-
-        r.CFrame = CFrame.new(groundPosition)
-        r.AssemblyLinearVelocity = Vector3.zero
-        r.AssemblyAngularVelocity = Vector3.zero
-        task.wait(0.2)
-        hwForceStand()
-        pathDiag("TP TRASH: MENDARAT DI LANTAI VALID, JARAK PROMPT="
-            .. string.format("%.1f", groundDistance))
-        return alive() and homeworkEnabled
+    if not alive() or not homeworkEnabled then
+        pathDiag("TWEEN DIBATALKAN: HOMEWORK OFF / KARAKTER TIDAK AKTIF")
+        return false
     end
 
-    hwForceStand()
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    r = hwRoot()
-    if not humanoid or not r then return false end
-
-    local pathService = game:GetService("PathfindingService")
-    local destination = q.Position
-    local houseFolder = W:FindFirstChild("KosanSpawned")
-    local promptHouse = prompt
-    while promptHouse and promptHouse.Parent ~= houseFolder do
-        promptHouse = promptHouse.Parent
-    end
-    if not promptHouse or promptHouse.Parent ~= houseFolder then
-        pathDiag("RUMAH TARGET PROMPT TIDAK DITEMUKAN")
-        return false
-    end
-    -- V15: buka collision daun pintu RUMAH TARGET sebelum ComputeAsync.
-    -- V14 baru menonaktifkannya setelah karakter macet, padahal path sudah
-    -- dihitung saat pintu masih menjadi penghalang.
-    local onyxHwTargetDoorParts = {}
-    for _, part in ipairs(promptHouse:GetDescendants()) do
-        if part:IsA("BasePart")
-        and string.lower(part.Name) == "door"
-        and part.CanCollide then
-            onyxHwTargetDoorParts[part] = true
-            part.CanCollide = false
-        end
-    end
-    local onyxHwDoorsRestored = false
-    local function restoreOnyxHwTargetDoors()
-        if onyxHwDoorsRestored then return end
-        onyxHwDoorsRestored = true
-        for part in pairs(onyxHwTargetDoorParts) do
-            if part and part.Parent then
-                pcall(function() part.CanCollide = true end)
-            end
-        end
-        pathDiag("COLLISION PINTU TARGET DIPULIHKAN")
-    end
-    if next(onyxHwTargetDoorParts) then
-        local count = 0
-        for _ in pairs(onyxHwTargetDoorParts) do count = count + 1 end
-        pathDiag("PINTU TARGET DIBUKA SEBELUM PATH COMPUTE: " .. tostring(count) .. " PART")
-        -- Beri physics satu frame untuk menerapkan perubahan collision.
-        task.wait(0.25)
-        -- Safety restore bila proses berhenti di tengah jalan.
-        task.delay(20, restoreOnyxHwTargetDoors)
-    else
-        pathDiag("TIDAK ADA DAUN PINTU COLLIDABLE DI RUMAH TARGET")
-    end
-
-    local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
-    local lastPathError = "BELUM ADA KANDIDAT"
-
-    local function makePath(targetPosition)
-        if onyxHwComputePending then
-            lastPathError = "COMPUTE MASIH BERJALAN DARI PERCOBAAN SEBELUMNYA"
-            return nil
-        end
-        r = hwRoot()
-        if not r then return nil end
-        local startPosition = r.Position
-        local path = pathService:CreatePath({
-            AgentRadius = 1.5,
-            AgentHeight = 5,
-            AgentCanJump = true,
-            WaypointSpacing = 3
-        })
-        -- ComputeAsync dapat yield lama. Jalankan terpisah dan batasi
-        -- waktu tunggu agar Homework tidak terkunci pada satu kandidat.
-        local completed = false
-        local computed = false
-        local computeError = nil
-        onyxHwComputePending = true
-        task.spawn(function()
-            computed, computeError = pcall(function()
-                path:ComputeAsync(startPosition, targetPosition)
-            end)
-            onyxHwComputePending = false
-            completed = true
-        end)
-
-        local startedAt = os.clock()
-        while not completed and os.clock() - startedAt < 3 do
-            if not alive() or not homeworkEnabled then
-                lastPathError = "HOMEWORK OFF SAAT COMPUTE"
-                return nil
-            end
-            task.wait(0.05)
-        end
-
-        if not completed then
-            lastPathError = "COMPUTE TIMEOUT 3S - PROSES LAMA DIBIARKAN SELESAI"
-            return nil
-        end
-        if not computed or path.Status ~= Enum.PathStatus.Success then
-            lastPathError = "NO PATH / COMPUTE ERROR: STATUS=" .. tostring(path.Status)
-                .. " ERROR=" .. tostring(computeError)
-            return nil
-        end
-        local waypoints = path:GetWaypoints()
-        if #waypoints == 0 then
-            lastPathError = "ZERO WAYPOINTS"
-            return nil
-        end
-        local length = 0
-        local previous = r.Position
-        for _, waypoint in ipairs(waypoints) do
-            length = length + (waypoint.Position - previous).Magnitude
-            previous = waypoint.Position
-        end
-        return {path = path, waypoints = waypoints, length = length, target = targetPosition}
-    end
-
-    -- Maksimal 8 titik pendekatan: 4 arah pada radius dekat,
-    -- lalu 4 arah pada radius kedua. Berhenti pada jalur valid pertama.
-    -- Ini menghindari puluhan ComputeAsync sebelum karakter mulai bergerak.
-    local function findApproachPath()
-        -- 8 arah mengelilingi prompt, dicoba dari radius dekat ke luar.
-        -- Titik diagonal membantu saat akses pintu tidak sejajar sumbu rumah.
-        local radii = {3, 6, 9}
-        local diagonal = math.sqrt(0.5)
-        local directions = {
-            Vector3.new(1, 0, 0),
-            Vector3.new(-1, 0, 0),
-            Vector3.new(0, 0, 1),
-            Vector3.new(0, 0, -1),
-            Vector3.new(diagonal, 0, diagonal),
-            Vector3.new(diagonal, 0, -diagonal),
-            Vector3.new(-diagonal, 0, diagonal),
-            Vector3.new(-diagonal, 0, -diagonal)
-        }
-        local checked = 0
-        -- Proyeksikan titik tujuan ke lantai pada ketinggian yang benar.
-        -- Prompt kotoran bisa berada di atas lantai; memakai Y prompt mentah
-        -- membuat Pathfinding mengejar titik melayang dan berulang kali NoPath.
-        local rayParams = RaycastParams.new()
-        rayParams.FilterType = Enum.RaycastFilterType.Exclude
-        rayParams.FilterDescendantsInstances = {character}
-        rayParams.IgnoreWater = true
-
-        local function floorPosition(x, z, referenceY)
-            local origin = Vector3.new(x, referenceY + 14, z)
-            local hit = workspace:Raycast(origin, Vector3.new(0, -55, 0), rayParams)
-            if not hit then return nil end
-            local rootOffset = humanoid.HipHeight + (r.Size.Y * 0.5)
-            return Vector3.new(x, hit.Position.Y + rootOffset, z)
-        end
-
-        local startGround = workspace:Raycast(
-            r.Position + Vector3.new(0, 2, 0),
-            Vector3.new(0, -12, 0),
-            rayParams
-        )
-        local rootOffset = startGround and (r.Position.Y - startGround.Position.Y)
-            or (humanoid.HipHeight + r.Size.Y * 0.5)
-
-        for _, radius in ipairs(radii) do
-            for index, direction in ipairs(directions) do
-                if not alive() or not homeworkEnabled then return nil end
-                local rawCandidate = destination + direction * radius
-                if (rawCandidate - destination).Magnitude <= allowedDistance - 1 then
-                    checked = checked + 1
-                    pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/24")
-                    local floorCandidate = floorPosition(rawCandidate.X, rawCandidate.Z, destination.Y)
-                    local candidatePosition = floorCandidate
-                        or Vector3.new(rawCandidate.X, destination.Y, rawCandidate.Z)
-                    if floorCandidate then
-                        -- Pertahankan selisih root-ke-lantai karakter, bukan offset
-                        -- avatar default, karena beberapa rig memakai HipHeight khusus.
-                        candidatePosition = Vector3.new(
-                            rawCandidate.X,
-                            floorCandidate.Y - (humanoid.HipHeight + r.Size.Y * 0.5) + rootOffset,
-                            rawCandidate.Z
-                        )
-                    end
-                    local candidatePath = makePath(candidatePosition)
-                    if candidatePath then
-                        pathDiag("TITIK " .. tostring(checked) .. ": SUCCESS")
-                        pathDiag("TITIK PENDEKATAN VALID " .. tostring(checked) .. "/24")
-                        return candidatePath
-                    end
-                    pathDiag("TITIK " .. tostring(checked) .. ": " .. tostring(lastPathError))
-                    if lastPathError:find("TIMEOUT", 1, true)
-                    or lastPathError:find("MASIH BERJALAN", 1, true) then
-                        pathDiag("PENCARIAN DIHENTIKAN AGAR COMPUTE TIDAK MENUMPUK")
-                        return nil
-                    end
-                end
-            end
-        end
-        pathDiag("24 TITIK PENDEKATAN GAGAL")
-        return nil
-    end
-
-    local function isDoorPart(part)
-        if not part or not part:IsA("BasePart") then return false end
-        local node = part
-        for _ = 1, 5 do
-            if not node then break end
-            local name = string.lower(node.Name)
-            if name:find("door", 1, true)
-            or name:find("pintu", 1, true)
-            or name:find("daunpintu", 1, true) then
-                return true
-            end
-            node = node.Parent
-        end
+    local root = hwRoot()
+    local targetPart = hwPart(prompt)
+    if not humanoid or not root or not targetPart then
+        pathDiag("TWEEN GAGAL: ROOT / HUMANOID / PROMPT TIDAK DITEMUKAN")
         return false
     end
 
-    local function phaseDoorPartsNearSegment(fromPosition, toPosition, targetHouse)
-        -- Scanner menemukan daun pintu aktual di rumah target sebagai:
-        -- KosanSpawned/<rumah>/Door/Door/Door (CanCollide=true, Anchored=true).
-        -- Jangan scan seluruh Workspace: hanya daun pintu di rumah prompt yang sedang dikerjakan.
-        local changed = {}
-        if not targetHouse or not targetHouse.Parent then return changed, 0 end
-        for _, part in ipairs(targetHouse:GetDescendants()) do
-            if part:IsA("BasePart")
-            and part.CanCollide
-            and string.lower(part.Name) == "door" then
-                changed[part] = part.CanCollide
-                part.CanCollide = false
-            end
-        end
-        local count = 0
-        for _ in pairs(changed) do count = count + 1 end
-        return changed, count
-    end
+    -- Kecepatan lari standar Roblox adalah 16 studs/detik.
+    -- Jika game mengubah WalkSpeed, ikuti nilai aktual karakter.
+    local runSpeed = tonumber(humanoid.WalkSpeed) or 16
+    if runSpeed <= 0 then runSpeed = 16 end
 
-    local function restoreDoorParts(changed)
-        for part, originalCanCollide in pairs(changed or {}) do
-            if part and part.Parent then
-                pcall(function() part.CanCollide = originalCanCollide end)
-            end
-        end
-    end
+    -- Bergerak langsung ke posisi prompt. Tween lurus sengaja mengabaikan
+    -- collision pintu, dinding, tangga, dan objek di sepanjang jalur.
+    -- Offset kecil menjaga root tidak tepat berada di titik attachment prompt.
+    local targetPosition = targetPart.Position + Vector3.new(0, 1.5, 0)
+    local distance = (targetPosition - root.Position).Magnitude
+    local duration = math.max(distance / runSpeed, 0.05)
+    local targetCFrame = root.CFrame + (targetPosition - root.Position)
 
-    local function followPath(route)
-        if not route then return false end
-        local path = route.path
-        local waypoints = route.waypoints
-        pathDiag("APPROACH PATH OK; WAYPOINTS=" .. tostring(#waypoints)
-            .. " LENGTH=" .. string.format("%.1f", route.length))
+    local tweenService = game:GetService("TweenService")
+    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
+    local wasAnchored = root.Anchored
+    local oldAutoRotate = humanoid.AutoRotate
+    local tween = tweenService:Create(root, tweenInfo, {CFrame = targetCFrame})
+    local completedState = nil
+    local completedConnection = tween.Completed:Connect(function(state)
+        completedState = state
+    end)
 
-        local blockedAt = nil
-        local blockedConnection = path.Blocked:Connect(function(index)
-            blockedAt = index
-        end)
+    pathDiag("TWEEN HOMEWORK: JARAK=" .. string.format("%.1f", distance)
+        .. " SPEED=" .. string.format("%.1f", runSpeed)
+        .. " DURASI=" .. string.format("%.2f", duration))
 
-        local function captureActualStuck(index, waypoint, rootPart, lastPos, lastProgressAt, recovery)
-            local nearby = {}
-            local center = rootPart.Position
-            for _, part in ipairs(workspace:GetPartBoundsInRadius(center, 8)) do
-                if part:IsA("BasePart") and part.CanCollide and not part:IsDescendantOf(character) then
-                    nearby[#nearby + 1] = {
-                        distance = (part.Position - center).Magnitude,
-                        name = part.Name,
-                        path = part:GetFullName(),
-                        position = tostring(part.Position),
-                        size = tostring(part.Size)
-                    }
-                end
-            end
-            table.sort(nearby, function(a, b) return a.distance < b.distance end)
-            while #nearby > 15 do table.remove(nearby) end
-            local env = getgenv()
-            if type(env.ONYX_HW_CAPTURE_STUCK_DIAG) == "function" then
-                pcall(env.ONYX_HW_CAPTURE_STUCK_DIAG, {
-                    house = promptHouse:GetFullName(),
-                    prompt = prompt:GetFullName() .. " | " .. tostring(prompt.ActionText),
-                    waypoint = tostring(index) .. "/" .. tostring(#waypoints),
-                    root = tostring(rootPart.Position),
-                    target = tostring(waypoint.Position),
-                    distance = string.format("%.2f", (rootPart.Position - waypoint.Position).Magnitude),
-                    stuckSeconds = string.format("%.2f", os.clock() - lastProgressAt),
-                    lastPosition = tostring(lastPos),
-                    velocity = tostring(rootPart.AssemblyLinearVelocity),
-                    humanoidState = tostring(humanoid:GetState()),
-                    recovery = recovery,
-                    nearby = nearby
-                })
-            end
-        end
+    -- Anchor sementara agar physics tidak mendorong karakter keluar dari
+    -- lintasan Tween saat menembus geometri. Selalu pulihkan state setelahnya.
+    root.Anchored = true
+    humanoid.AutoRotate = false
+    tween:Play()
 
-        local playerScripts = player:FindFirstChild("PlayerScripts")
-        local controls
-        pcall(function()
-            local playerModule = require(playerScripts:WaitForChild("PlayerModule"))
-            controls = playerModule:GetControls()
-        end)
-
-        for index, waypoint in ipairs(waypoints) do
-            if not alive() or not homeworkEnabled then
-                blockedConnection:Disconnect()
-                return false
-            end
-            if blockedAt and blockedAt <= index then
-                pathDiag("BLOCKED AT WAYPOINT " .. tostring(blockedAt) .. "/" .. tostring(index))
-                blockedConnection:Disconnect()
-                return false
-            end
-
-            r = hwRoot()
-            if not r then
-                blockedConnection:Disconnect()
-                return false
-            end
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                humanoid.Jump = true
-            end
-
-            pathDiag("MOVETO WAYPOINT " .. tostring(index) .. "/" .. tostring(#waypoints))
-            humanoid:MoveTo(waypoint.Position)
-            local distance = (r.Position - waypoint.Position).Magnitude
-            local deadline = os.clock() + math.max(6, distance / 7 + 3)
-            local lastPosition = r.Position
-            local lastProgressAt = os.clock()
-            local lastMoveCommand = os.clock()
-            local doorWaitAttempts = 0
-            local jumpRecoveryUsed = false
-            local phasedDoorParts = nil
-            local phasedDoorCount = 0
-            local phasedDoorUntil = 0
-
-            while os.clock() < deadline do
-                if not alive() or not homeworkEnabled then
-                    blockedConnection:Disconnect()
-                    return false
-                end
-                r = hwRoot()
-                if not r then
-                    blockedConnection:Disconnect()
-                    return false
-                end
-
-                -- Input analog manual mengambil prioritas sementara. Setelah dilepas,
-                -- rute dihitung ulang dari posisi karakter yang terbaru.
-                local manualMove = false
-                if controls then
-                    pcall(function()
-                        manualMove = controls:GetMoveVector().Magnitude > 0.15
-                    end)
-                end
-                if manualMove then
-                    humanoid:MoveTo(r.Position)
-                    pathDiag("INPUT MANUAL - MENUNGGU ANALOG DILEPAS")
-                    repeat
-                        task.wait(0.15)
-                        if not alive() or not homeworkEnabled then
-                            blockedConnection:Disconnect()
-                            return false
-                        end
-                        if controls then
-                            local ok, moveVector = pcall(function()
-                                return controls:GetMoveVector()
-                            end)
-                            manualMove = ok and moveVector.Magnitude > 0.15
-                        else
-                            manualMove = false
-                        end
-                    until not manualMove
-                    blockedConnection:Disconnect()
-                    pathDiag("ANALOG DILEPAS - HITUNG ULANG RUTE")
-                    return false
-                end
-
-                if phasedDoorParts then
-                    if os.clock() >= phasedDoorUntil then
-                        restoreDoorParts(phasedDoorParts)
-                        phasedDoorParts = nil
-                        pathDiag("COLLISION PINTU DIPULIHKAN")
-                    else
-                        for part in pairs(phasedDoorParts) do
-                            if part and part.Parent then
-                                pcall(function() part.CanCollide = false end)
-                            end
-                        end
-                    end
-                end
-
-                local remainingNow = (r.Position - waypoint.Position).Magnitude
-                if remainingNow <= 3 then
-                    if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
-                    break
-                end
-                if blockedAt and blockedAt <= index then
-                    blockedConnection:Disconnect()
-                    return false
-                end
-
-                if (r.Position - lastPosition).Magnitude >= 0.65 then
-                    lastPosition = r.Position
-                    lastProgressAt = os.clock()
-                elseif os.clock() - lastProgressAt >= 1.8 then
-                    -- Daun pintu dapat mendorong karakter saat melewati ambang.
-                    -- Tunggu ayunan pintu selesai, lalu coba waypoint yang sama sekali lagi
-                    -- sebelum membatalkan rute dan melakukan replan.
-                    if not jumpRecoveryUsed then
-                        captureActualStuck(index, waypoint, r, lastPosition, lastProgressAt,
-                            "SEBELUM JUMP RECOVERY")
-                        -- Coba lewati bibir tangga/halangan rendah sebelum recovery pintu.
-                        jumpRecoveryUsed = true
-                        pathDiag("WAYPOINT MACET: COBA LOMPAT RECOVERY")
-                        humanoid.Jump = true
-                        humanoid:MoveTo(waypoint.Position)
-                        task.wait(0.4)
-                        r = hwRoot()
-                        if not r then
-                            blockedConnection:Disconnect()
-                            return false
-                        end
-                        lastPosition = r.Position
-                        lastProgressAt = os.clock()
-                        deadline = deadline + 2
-                    elseif doorWaitAttempts < 3 then
-                        doorWaitAttempts = doorWaitAttempts + 1
-                        if not phasedDoorParts then
-                            local currentRoot = hwRoot()
-                            if currentRoot then
-                                phasedDoorParts, phasedDoorCount =
-                                    phaseDoorPartsNearSegment(currentRoot.Position, waypoint.Position, promptHouse)
-                                if phasedDoorCount > 0 then
-                                    phasedDoorUntil = os.clock() + 5
-                                    pathDiag("COLLISION PINTU DIMATIKAN SEMENTARA: "
-                                        .. tostring(phasedDoorCount) .. " PART / 5 DETIK")
-                                else
-                                    pathDiag("PINTU TIDAK TERDETEKSI - CEK NAMA PART/MODEL")
-                                    phasedDoorParts = nil
-                                end
-                            end
-                        end
-                        -- Sentuh pintu sebentar untuk memicu animasi bukaan,
-                        -- lalu berhenti agar karakter tidak terus melawan daun pintu.
-                        pathDiag("PICU PINTU " .. tostring(doorWaitAttempts) .. "/3 - WAYPOINT "
-                            .. tostring(index) .. "/" .. tostring(#waypoints))
-                        humanoid:MoveTo(waypoint.Position)
-                        task.wait(0.35)
-                        r = hwRoot()
-                        if not r then
-                            blockedConnection:Disconnect()
-                            return false
-                        end
-                        humanoid:MoveTo(r.Position)
-                        task.wait(2.5)
-                        if not alive() or not homeworkEnabled then
-                            blockedConnection:Disconnect()
-                            return false
-                        end
-                        r = hwRoot()
-                        if not r then
-                            blockedConnection:Disconnect()
-                            return false
-                        end
-                        if (r.Position - waypoint.Position).Magnitude <= 3 then
-                            break
-                        end
-                        lastPosition = r.Position
-                        lastProgressAt = os.clock()
-                        lastMoveCommand = os.clock()
-                        deadline = deadline + 3.5
-                        humanoid:MoveTo(waypoint.Position)
-                        pathDiag("SELESAI MENUNGGU PINTU - COBA LINTASI LAGI")
-                    else
-                        humanoid:MoveTo(r.Position)
-                        if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
-                        pathDiag("PINTU TETAP MENGHALANG SETELAH 3 PICU - REPLAN WAYPOINT "
-                            .. tostring(index) .. "/" .. tostring(#waypoints))
-                        task.wait(0.65)
-                        blockedConnection:Disconnect()
-                        return false
-                    end
-                end
-
-                if os.clock() - lastMoveCommand >= 0.8 then
-                    humanoid:MoveTo(waypoint.Position)
-                    lastMoveCommand = os.clock()
-                end
-                task.wait(0.1)
-            end
-
-            if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
-            r = hwRoot()
-            local remaining = r and (r.Position - waypoint.Position).Magnitude or -1
-            if not r or remaining > 4 then
-                pathDiag("WAYPOINT TIMEOUT " .. tostring(index) .. "/" .. tostring(#waypoints)
-                    .. " DIST=" .. tostring(remaining))
-                blockedConnection:Disconnect()
-                return false
-            end
-        end
-
-        blockedConnection:Disconnect()
-        r = hwRoot()
-        local finalDistance = r and (r.Position - destination).Magnitude or -1
-        pathDiag("APPROACH END DIST TO PROMPT=" .. tostring(finalDistance)
-            .. " ALLOWED=" .. tostring(allowedDistance))
-        return r ~= nil and finalDistance <= allowedDistance
-    end
-
-    --    -- Cari rute ke titik pendekatan yang dapat dicapai, lalu jalankan.
-    local reached = false
-    for attempt = 1, 3 do
-        if not alive() or not homeworkEnabled then return false end
-        pathDiag("PENCARIAN RUTE UNTUK PROMPT YANG SAMA - PERCOBAAN "
-            .. tostring(attempt) .. "/3")
-        local route = findApproachPath()
-        if route and followPath(route) then
-            reached = true
+    while not completedState do
+        if not alive() or not homeworkEnabled
+        or player.Character ~= character
+        or not root.Parent then
+            tween:Cancel()
             break
-        elseif route then
-            pathDiag("RUTE TERHALANG - TETAP PADA PROMPT INI, COBA ULANG")
-        else
-            pathDiag("TITIK PENDEKATAN GAGAL: " .. tostring(lastPathError))
         end
-        if attempt < 3 then task.wait(1.0) end
+        task.wait(0.05)
     end
 
-    if not reached then
-        restoreOnyxHwTargetDoors()
-        pathDiag("GAGAL SETELAH 3 PERCOBAAN PADA PROMPT YANG SAMA; LAST_ERROR=" .. tostring(lastPathError))
-        setStatus("PATHFINDING RUMAH TERHALANG")
-        return false
+    completedConnection:Disconnect()
+    pcall(function() tween:Cancel() end)
+    if root and root.Parent then
+        root.Anchored = wasAnchored
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+    if humanoid and humanoid.Parent then
+        humanoid.AutoRotate = oldAutoRotate
     end
 
-    restoreOnyxHwTargetDoors()
-    hwForceStand()
-    return alive() and homeworkEnabled
+    if completedState == Enum.PlaybackState.Completed
+    and alive() and homeworkEnabled then
+        pathDiag("TWEEN HOMEWORK SELESAI")
+        return true
+    end
+
+    pathDiag("TWEEN HOMEWORK DIBATALKAN")
+    return false
 end
 ]=],
 

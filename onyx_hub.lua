@@ -1102,6 +1102,7 @@ local function hwMove(prompt)
         return false
     end
 
+    -- Keluar dari kursi dan tunggu posisi karakter benar-benar grounded.
     hwForceStand()
     local groundedDeadline = os.clock() + 3
     repeat
@@ -1123,6 +1124,7 @@ local function hwMove(prompt)
     local promptPosition = parent:IsA("Attachment")
         and parent.WorldPosition or targetPart.Position
 
+    -- Pertahankan targetPart dalam raycast: bagian atasnya mungkin lantai.
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
     rayParams.FilterDescendantsInstances = {character}
@@ -1131,142 +1133,183 @@ local function hwMove(prompt)
 
     local offsets = {
         Vector3.new(0, 0, 0),
-        Vector3.new(2.75, 0, 0),
-        Vector3.new(-2.75, 0, 0),
-        Vector3.new(0, 0, 2.75),
-        Vector3.new(0, 0, -2.75)
+        Vector3.new(2.5, 0, 0), Vector3.new(-2.5, 0, 0),
+        Vector3.new(0, 0, 2.5), Vector3.new(0, 0, -2.5),
+        Vector3.new(4, 0, 4), Vector3.new(-4, 0, 4),
+        Vector3.new(4, 0, -4), Vector3.new(-4, 0, -4)
     }
 
-    local candidates = {}
-    for _, offset in ipairs(offsets) do
-        local rayOrigin = promptPosition + offset + Vector3.new(0, 12, 0)
-        local hit = workspace:Raycast(rayOrigin, Vector3.new(0, -36, 0), rayParams)
-        if hit and hit.Normal.Y >= 0.65
-        and math.abs(hit.Position.Y - promptPosition.Y) <= 8 then
-            local goal = hit.Position + Vector3.new(
-                0, humanoid.HipHeight + root.Size.Y / 2 + 0.12, 0
-            )
-            local horizontal = Vector3.new(
-                goal.X - promptPosition.X, 0, goal.Z - promptPosition.Z
-            ).Magnitude
-            table.insert(candidates, {
-                goal = goal,
-                score = (goal - root.Position).Magnitude + horizontal * 0.2
-            })
-        end
-    end
-
-    table.sort(candidates, function(a, b)
-        return a.score < b.score
-    end)
-
-    if #candidates == 0 then
-        setStatus("PATHFINDING: PERMUKAAN LANTAI TARGET TIDAK DITEMUKAN")
-        return false
-    end
-
-    local selectedPath
-    local pathAttempts = math.min(#candidates, 3)
-    for index = 1, pathAttempts do
-        if not alive() or not homeworkEnabled then return false end
-        root = hwRoot()
-        if not root then return false end
-
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 1.25,
-            AgentHeight = 5,
-            AgentCanJump = true,
-            AgentCanClimb = true,
-            WaypointSpacing = 3
-        })
-
-        local computed = pcall(function()
-            path:ComputeAsync(root.Position, candidates[index].goal)
-        end)
-
-        if computed and path.Status == Enum.PathStatus.Success
-        and #path:GetWaypoints() > 0 then
-            selectedPath = path
-            break
-        end
-    end
-
-    if not selectedPath then
-        setStatus("PATHFINDING: TIDAK ADA RUTE VALID KE TARGET")
-        return false
-    end
-
-    local waypoints = selectedPath:GetWaypoints()
-    local currentWaypoint = 1
-    local blockedAhead = false
-    local blockedConnection = selectedPath.Blocked:Connect(function(blockedIndex)
-        if blockedIndex >= currentWaypoint then blockedAhead = true end
-    end)
-
-    local routeOK = true
-    for index, waypoint in ipairs(waypoints) do
-        currentWaypoint = index
-        if not alive() or not homeworkEnabled or blockedAhead then
-            routeOK = false
-            break
-        end
-
+    local function findBestPath()
         character = player.Character
         humanoid = character and character:FindFirstChildOfClass("Humanoid")
         root = hwRoot()
-        if not humanoid or not root or humanoid.Health <= 0 then
-            routeOK = false
-            break
+        if not humanoid or not root then return nil end
+
+        local candidates = {}
+        for _, offset in ipairs(offsets) do
+            if not alive() or not homeworkEnabled then return nil end
+
+            local rayOrigin = promptPosition + offset + Vector3.new(0, 12, 0)
+            local hit = workspace:Raycast(
+                rayOrigin, Vector3.new(0, -36, 0), rayParams
+            )
+
+            if hit and hit.Normal.Y >= 0.65
+            and math.abs(hit.Position.Y - promptPosition.Y) <= 8 then
+                local goal = hit.Position + Vector3.new(
+                    0, humanoid.HipHeight + root.Size.Y / 2 + 0.15, 0
+                )
+                local horizontal = Vector3.new(
+                    goal.X - promptPosition.X, 0, goal.Z - promptPosition.Z
+                ).Magnitude
+
+                table.insert(candidates, {
+                    goal = goal,
+                    score = (goal - root.Position).Magnitude + horizontal * 0.2
+                })
+            end
         end
 
-        if (waypoint.Position - root.Position).Magnitude > 2.25 then
-            if waypoint.Action == Enum.PathWaypointAction.Jump then
-                humanoid.Jump = true
-            end
+        table.sort(candidates, function(a, b)
+            return a.score < b.score
+        end)
 
-            humanoid:MoveTo(waypoint.Position)
-            local distance = (waypoint.Position - root.Position).Magnitude
-            local speed = math.max(humanoid.WalkSpeed, 8)
-            local deadline = os.clock() + math.max(5, distance / speed * 2.5 + 2)
-            local reached = false
+        if #candidates == 0 then return nil end
 
-            while os.clock() < deadline do
-                if not alive() or not homeworkEnabled or blockedAhead then break end
-                root = hwRoot()
-                if not root then break end
-                if (waypoint.Position - root.Position).Magnitude <= 2.5 then
-                    reached = true
-                    break
+        local bestPath, bestGoal, bestScore
+        -- Test up to five nearest walkable goal candidates to avoid
+        -- excessive ComputeAsync calls while tolerating blocked target sides.
+        local pathAttempts = math.min(#candidates, 5)
+        for index = 1, pathAttempts do
+            if not alive() or not homeworkEnabled then return nil end
+            root = hwRoot()
+            if not root then return nil end
+
+            local path = PathfindingService:CreatePath({
+                AgentRadius = 1.25,
+                AgentHeight = 5,
+                AgentCanJump = true,
+                AgentCanClimb = true,
+                WaypointSpacing = 2
+            })
+
+            local computed = pcall(function()
+                path:ComputeAsync(root.Position, candidates[index].goal)
+            end)
+
+            if computed and path.Status == Enum.PathStatus.Success then
+                local waypoints = path:GetWaypoints()
+                if #waypoints > 0 then
+                    local score = candidates[index].score + (#waypoints * 0.2)
+                    if not bestScore or score < bestScore then
+                        bestPath = path
+                        bestGoal = candidates[index].goal
+                        bestScore = score
+                    end
                 end
-                task.wait(0.1)
             end
+        end
 
-            if not reached then
+        return bestPath, bestGoal
+    end
+
+    -- Recompute the route up to three times if a waypoint is blocked
+    -- or the Humanoid cannot reach it. Movement is always via MoveTo.
+    for attempt = 1, 3 do
+        if not alive() or not homeworkEnabled then return false end
+
+        local path, goal = findBestPath()
+        if not path or not goal then
+            setStatus("PATHFINDING: TIDAK ADA RUTE VALID KE LANTAI TARGET")
+            return false
+        end
+
+        local waypoints = path:GetWaypoints()
+        local currentWaypoint = 1
+        local blockedAhead = false
+        local blockedConnection = path.Blocked:Connect(function(blockedIndex)
+            if blockedIndex >= currentWaypoint then
+                blockedAhead = true
+            end
+        end)
+
+        local routeOK = true
+        for index, waypoint in ipairs(waypoints) do
+            currentWaypoint = index
+            if not alive() or not homeworkEnabled or blockedAhead then
                 routeOK = false
                 break
             end
-        end
-    end
 
-    blockedConnection:Disconnect()
+            character = player.Character
+            humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            root = hwRoot()
+            if not humanoid or not root or humanoid.Health <= 0 then
+                routeOK = false
+                break
+            end
 
-    if routeOK and not blockedAhead then
-        root = hwRoot()
-        if root and prompt.Parent then
-            local interactionRange = math.max(
-                4,
-                math.min(tonumber(prompt.MaxActivationDistance) or 10, 10) - 0.5
-            )
-            if (root.Position - promptPosition).Magnitude <= interactionRange then
-                return true
+            local distance = (waypoint.Position - root.Position).Magnitude
+            if distance > 2.25 then
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+
+                humanoid:MoveTo(waypoint.Position)
+                local speed = math.max(humanoid.WalkSpeed, 8)
+                local deadline = os.clock() + math.max(6, distance / speed * 3 + 3)
+                local reached = false
+
+                while os.clock() < deadline do
+                    if not alive() or not homeworkEnabled or blockedAhead then
+                        break
+                    end
+
+                    root = hwRoot()
+                    if not root then break end
+
+                    if (waypoint.Position - root.Position).Magnitude <= 2.5 then
+                        reached = true
+                        break
+                    end
+                    task.wait(0.1)
+                end
+
+                if not reached then
+                    routeOK = false
+                    break
+                end
             end
         end
+
+        blockedConnection:Disconnect()
+
+        if routeOK and not blockedAhead then
+            root = hwRoot()
+            if root and prompt.Parent then
+                local interactionRange = math.max(
+                    4,
+                    math.min(tonumber(prompt.MaxActivationDistance) or 10, 10) - 0.5
+                )
+                if (root.Position - promptPosition).Magnitude <= interactionRange then
+                    return true
+                end
+            end
+        end
+
+        local currentHumanoid = player.Character
+            and player.Character:FindFirstChildOfClass("Humanoid")
+        if currentHumanoid then
+            currentHumanoid:Move(Vector3.zero)
+        end
+
+        if attempt < 3 then
+            setStatus("PATHFINDING: HITUNG ULANG RUTE " .. tostring(attempt + 1) .. "/3")
+            task.wait(0.25)
+        end
     end
 
-    local currentHumanoid = player.Character
-        and player.Character:FindFirstChildOfClass("Humanoid")
-    if currentHumanoid then currentHumanoid:Move(Vector3.zero) end
-    setStatus("PATHFINDING: RUTE TERHALANG / TIDAK MENCAPAI TARGET")
+    setStatus("PATHFINDING: GAGAL MENCAPAI AREA PROMPT")
     return false
 end
 ]=]

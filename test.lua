@@ -165,8 +165,108 @@ local function hwMove(prompt)
     return alive() and homeworkEnabled
 end
 ]=],
+
     "HOMEWORK PATHFINDING MOVE"
 )
+
+-- DIAGNOSTIK HOMEWORK: hanya mencatat, tidak mengubah alur kerja.
+local diagInsert = [=[
+local onyxHwDiag = {
+    lastStage = "MENUNGGU HOMEWORK",
+    findCalls = 0,
+    moveCalls = 0,
+    lastMove = "BELUM ADA",
+    lastMoveResult = "BELUM ADA"
+}
+
+local hwFindHouseOriginal = hwFindHouse
+hwFindHouse = function(...)
+    onyxHwDiag.findCalls = onyxHwDiag.findCalls + 1
+    onyxHwDiag.lastStage = "MENCARI RUMAH"
+    local result = hwFindHouseOriginal(...)
+    onyxHwDiag.lastHouse = result and result:GetFullName() or "NIL"
+    onyxHwDiag.lastStage = result and "RUMAH DITEMUKAN" or "RUMAH TIDAK DITEMUKAN"
+    return result
+end
+
+local hwMoveOriginal = hwMove
+hwMove = function(prompt)
+    onyxHwDiag.moveCalls = onyxHwDiag.moveCalls + 1
+    onyxHwDiag.lastStage = "HW MOVE DIPANGGIL"
+    onyxHwDiag.lastMove = prompt and (prompt:GetFullName() .. " | " .. tostring(prompt.ActionText)) or "PROMPT NIL"
+    local ok, result = pcall(hwMoveOriginal, prompt)
+    onyxHwDiag.lastMoveResult = ok and tostring(result) or ("ERROR: " .. tostring(result))
+    onyxHwDiag.lastStage = "HW MOVE SELESAI"
+    return ok and result or false
+end
+
+task.spawn(function()
+    local reportedForEnable = false
+    while alive() do
+        if homeworkEnabled and not reportedForEnable then
+            task.wait(7)
+            if not alive() then break end
+            if homeworkEnabled then
+                local lines = {}
+                local function add(k, v)
+                    lines[#lines + 1] = k .. "=" .. tostring(v)
+                end
+                local folder = W:FindFirstChild("KosanSpawned")
+                local houses = folder and folder:GetChildren() or {}
+                local ownedCount, promptCount, enabledCount = 0, 0, 0
+                add("HOMEWORK", homeworkEnabled)
+                add("PLAYER_USER_ID", player.UserId)
+                add("ROOT", hwRoot() and tostring(hwRoot().Position) or "NIL")
+                add("KOSANSPAWNED", folder and "ADA" or "NIL")
+                add("JUMLAH_RUMAH", #houses)
+                for _, house in ipairs(houses) do
+                    local owner = house:GetAttribute("OwnerUserId")
+                    local isOwned = hwOwnsHouse(house)
+                    if isOwned then ownedCount = ownedCount + 1 end
+                    local total, enabled = 0, 0
+                    for _, obj in ipairs(house:GetDescendants()) do
+                        if obj:IsA("ProximityPrompt") and obj.ActionText == "Bersihkan" then
+                            total = total + 1
+                            promptCount = promptCount + 1
+                            if obj.Enabled then
+                                enabled = enabled + 1
+                                enabledCount = enabledCount + 1
+                            end
+                        end
+                    end
+                    add("RUMAH_" .. house.Name,
+                        "OwnerUserId=" .. tostring(owner)
+                        .. ", owned=" .. tostring(isOwned)
+                        .. ", Bersihkan=" .. tostring(enabled) .. "/" .. tostring(total))
+                end
+                add("RUMAH_MILIK_PLAYER", ownedCount)
+                add("PROMPT_BERSIHKAN_AKTIF_TOTAL", enabledCount)
+                add("PROMPT_BERSIHKAN_SEMUA", promptCount)
+                add("FIND_HOUSE_CALLS", onyxHwDiag.findCalls)
+                add("LAST_STAGE", onyxHwDiag.lastStage)
+                add("LAST_HOUSE", onyxHwDiag.lastHouse or "BELUM ADA")
+                add("MOVE_CALLS", onyxHwDiag.moveCalls)
+                add("LAST_MOVE", onyxHwDiag.lastMove)
+                add("LAST_MOVE_RESULT", onyxHwDiag.lastMoveResult)
+                add("CARRYING_TRASH", hwCarrying() ~= nil)
+                local report = "ONYX HOMEWORK DIAGNOSTIC\\n" .. table.concat(lines, "\\n")
+                pcall(function()
+                    if typeof(setclipboard) == "function" then setclipboard(report) end
+                end)
+                pcall(function() warn(report) end)
+            end
+            reportedForEnable = true
+        elseif not homeworkEnabled then
+            reportedForEnable = false
+        end
+        task.wait(0.5)
+    end
+end)
+]=]
+local diagMarker = "local function homeworkRun()"
+local diagAt = source:find(diagMarker, 1, true)
+assert(diagAt, "HOMEWORK DIAGNOSTIC: marker homeworkRun tidak ditemukan")
+source = source:sub(1, diagAt - 1) .. diagInsert .. "\\n" .. source:sub(diagAt)
 ]====]
 
 ]==]

@@ -1,4 +1,5 @@
 -- ONYX HUB - CORE LOADER
+-- BUILD: 20261126-cleanhomework-fix2
 -- Loader diagnostics are intentionally silent; no status UI is shown.
 local function diagnosticStatus(message, failed)
     if not failed then return end

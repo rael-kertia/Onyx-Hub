@@ -270,9 +270,9 @@ local function hwMove(prompt)
                     if not doorWaitUsed then
                         doorWaitUsed = true
                         humanoid:MoveTo(r.Position)
-                        pathDiag("PINTU MENDORONG KARAKTER - JEDA 1.5S DI WAYPOINT "
+                        pathDiag("PINTU MENDORONG - JEDA SEBELUM MANUVER SAMPING "
                             .. tostring(index) .. "/" .. tostring(#waypoints))
-                        task.wait(1.5)
+                        task.wait(1.0)
                         if not alive() or not homeworkEnabled then
                             blockedConnection:Disconnect()
                             return false
@@ -285,12 +285,83 @@ local function hwMove(prompt)
                         if (r.Position - waypoint.Position).Magnitude <= 3 then
                             break
                         end
-                        lastPosition = r.Position
-                        lastProgressAt = os.clock()
-                        lastMoveCommand = os.clock()
-                        deadline = deadline + 1.5
-                        humanoid:MoveTo(waypoint.Position)
-                        pathDiag("PINTU SELESAI DITUNGGU - COBA WAYPOINT YANG SAMA")
+
+                        -- Coba mengitari daun pintu dari sisi kiri lalu kanan.
+                        local travel = Vector3.new(
+                            waypoint.Position.X - lastPosition.X,
+                            0,
+                            waypoint.Position.Z - lastPosition.Z
+                        )
+                        if travel.Magnitude < 0.1 then
+                            travel = Vector3.new(
+                                waypoint.Position.X - r.Position.X,
+                                0,
+                                waypoint.Position.Z - r.Position.Z
+                            )
+                        end
+                        if travel.Magnitude < 0.1 then
+                            travel = Vector3.new(0, 0, -1)
+                        end
+                        travel = travel.Unit
+                        local side = Vector3.new(-travel.Z, 0, travel.X)
+                        local sideSucceeded = false
+
+                        for sideAttempt = 1, 2 do
+                            if not alive() or not homeworkEnabled then
+                                blockedConnection:Disconnect()
+                                return false
+                            end
+                            r = hwRoot()
+                            if not r then
+                                blockedConnection:Disconnect()
+                                return false
+                            end
+                            local sign = sideAttempt == 1 and 1 or -1
+                            local sideTarget = r.Position + side * (3.5 * sign)
+                            pathDiag("COBA SISI " .. (sign == 1 and "KIRI" or "KANAN")
+                                .. " PINTU - WAYPOINT " .. tostring(index))
+                            humanoid:MoveTo(sideTarget)
+
+                            local sideDeadline = os.clock() + 2.5
+                            while os.clock() < sideDeadline do
+                                if not alive() or not homeworkEnabled then
+                                    blockedConnection:Disconnect()
+                                    return false
+                                end
+                                r = hwRoot()
+                                if not r then
+                                    blockedConnection:Disconnect()
+                                    return false
+                                end
+                                if (r.Position - sideTarget).Magnitude <= 2.0 then
+                                    sideSucceeded = true
+                                    break
+                                end
+                                task.wait(0.1)
+                            end
+
+                            if sideSucceeded then break end
+                            humanoid:MoveTo(r.Position)
+                            task.wait(0.15)
+                        end
+
+                        r = hwRoot()
+                        if sideSucceeded and r then
+                            pathDiag("MANUVER SAMPING BERHASIL - LANJUT WAYPOINT "
+                                .. tostring(index))
+                            lastPosition = r.Position
+                            lastProgressAt = os.clock()
+                            lastMoveCommand = os.clock()
+                            deadline = deadline + 4
+                            humanoid:MoveTo(waypoint.Position)
+                        else
+                            humanoid:MoveTo(r and r.Position or waypoint.Position)
+                            pathDiag("KEDUA SISI PINTU GAGAL - REPLAN WAYPOINT "
+                                .. tostring(index) .. "/" .. tostring(#waypoints))
+                            task.wait(0.4)
+                            blockedConnection:Disconnect()
+                            return false
+                        end
                     else
                         humanoid:MoveTo(r.Position)
                         pathDiag("PINTU MASIH MENGHALANG - REPLAN WAYPOINT "

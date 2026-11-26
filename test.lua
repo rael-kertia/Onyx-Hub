@@ -377,10 +377,20 @@ local onyxHwDiag = {
     lastMoveResult = "BELUM ADA"
 }
 
+local onyxHwPinnedHouse = nil
 local hwFindHouseOriginal = hwFindHouse
 hwFindHouse = function(...)
     onyxHwDiag.findCalls = onyxHwDiag.findCalls + 1
     onyxHwDiag.lastStage = "MENCARI RUMAH"
+    if onyxHwPinnedHouse then
+        if onyxHwPinnedHouse.Parent == W:FindFirstChild("KosanSpawned")
+        and #hwGet(onyxHwPinnedHouse, 1) > 0 then
+            onyxHwDiag.lastHouse = onyxHwPinnedHouse:GetFullName() .. " (PINNED)"
+            onyxHwDiag.lastStage = "MENGULANG RUMAH YANG SAMA"
+            return onyxHwPinnedHouse
+        end
+        onyxHwPinnedHouse = nil
+    end
     local result = hwFindHouseOriginal(...)
     onyxHwDiag.lastHouse = result and result:GetFullName() or "NIL"
     onyxHwDiag.lastStage = result and "RUMAH DITEMUKAN" or "RUMAH TIDAK DITEMUKAN"
@@ -394,6 +404,17 @@ hwMove = function(prompt)
     onyxHwDiag.lastMove = prompt and (prompt:GetFullName() .. " | " .. tostring(prompt.ActionText)) or "PROMPT NIL"
     local ok, result = pcall(hwMoveOriginal, prompt)
     onyxHwDiag.lastMoveResult = ok and tostring(result) or ("ERROR: " .. tostring(result))
+    if prompt and prompt.ActionText == "Bersihkan" and (not ok or not result) then
+        local folder = W:FindFirstChild("KosanSpawned")
+        local house = prompt
+        while house and house.Parent ~= folder do
+            house = house.Parent
+        end
+        if house and house.Parent == folder then
+            onyxHwPinnedHouse = house
+            onyxHwDiag.lastHouse = house:GetFullName() .. " (PINNED AFTER PATH FAILURE)"
+        end
+    end
     onyxHwDiag.lastStage = "HW MOVE SELESAI"
     return ok and result or false
 end

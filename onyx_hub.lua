@@ -1058,7 +1058,7 @@ local function hwMove(prompt)
     -- berada di tengah part, menempel pada tembok, atau di udara.
     local rayParams = RaycastParams.new()
     rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {character}
+    rayParams.FilterDescendantsInstances = {character, targetPart}
     rayParams.IgnoreWater = true
     rayParams.RespectCanCollide = true
 
@@ -1083,7 +1083,7 @@ local function hwMove(prompt)
 
             if hit and hit.Normal.Y >= 0.65
             and math.abs(hit.Position.Y - promptPosition.Y) <= 6 then
-                local goal = hit.Position + Vector3.new(0, 0.5, 0)
+                local goal = hit.Position + Vector3.new(0, humanoid.HipHeight + root.Size.Y / 2 + 0.15, 0)
                 local path = PathfindingService:CreatePath({
                     AgentRadius = 1.5,
                     AgentHeight = 5,
@@ -1155,20 +1155,16 @@ local function hwMove(prompt)
                 break
             end
 
-            local horizontal = Vector3.new(
-                waypoint.Position.X - root.Position.X,
-                0,
-                waypoint.Position.Z - root.Position.Z
-            ).Magnitude
+            local distance = (waypoint.Position - root.Position).Magnitude
 
-            if horizontal > 1.8 then
+            if distance > 2.0 then
                 if waypoint.Action == Enum.PathWaypointAction.Jump then
                     humanoid.Jump = true
                 end
 
                 humanoid:MoveTo(waypoint.Position)
                 local speed = math.max(humanoid.WalkSpeed, 8)
-                local timeout = math.max(5, horizontal / speed * 2.5 + 3)
+                local timeout = math.max(6, distance / speed * 3 + 4)
                 local deadline = os.clock() + timeout
                 local reached = false
 
@@ -1180,13 +1176,8 @@ local function hwMove(prompt)
                     root = hwRoot()
                     if not root then break end
 
-                    local delta = Vector3.new(
-                        waypoint.Position.X - root.Position.X,
-                        0,
-                        waypoint.Position.Z - root.Position.Z
-                    ).Magnitude
-
-                    if delta <= 2.2 then
+                    local remaining = (waypoint.Position - root.Position).Magnitude
+                    if remaining <= 2.5 then
                         reached = true
                         break
                     end
@@ -1233,6 +1224,57 @@ end
 
 -- Farm, Feed, and Convert controls remain absent; Auto Clean stays enabled in GUI.
 
+
+
+
+-- GUARANTEED AUTO CLEAN CONTROL: pinned outside the scrolling content.
+source = source .. [====[
+do
+    if cleanButton then
+        cleanButton.Visible = false
+    end
+
+    local pinnedClean = Instance.new("TextButton")
+    pinnedClean.Name = "OnyxAutoCleanButton"
+    pinnedClean.Size = UDim2.new(1, -72, 0, 36)
+    pinnedClean.Position = UDim2.fromOffset(62, 48)
+    pinnedClean.BackgroundColor3 = Color3.fromRGB(22, 36, 54)
+    pinnedClean.BorderSizePixel = 0
+    pinnedClean.TextColor3 = Color3.fromRGB(225, 239, 250)
+    pinnedClean.TextSize = 11
+    pinnedClean.Font = Enum.Font.GothamBold
+    pinnedClean.Text = "AUTO CLEAN: OFF"
+    pinnedClean.ZIndex = 60
+    pinnedClean.Parent = frame
+    Instance.new("UICorner", pinnedClean).CornerRadius = UDim.new(0, 8)
+
+    local pinnedStroke = Instance.new("UIStroke")
+    pinnedStroke.Color = Color3.fromRGB(73, 130, 145)
+    pinnedStroke.Thickness = 1
+    pinnedStroke.Parent = pinnedClean
+
+    local function paintPinnedClean()
+        pinnedClean.Text = enabled and "AUTO CLEAN: ON" or "AUTO CLEAN: OFF"
+        pinnedClean.BackgroundColor3 = enabled
+            and Color3.fromRGB(5, 120, 90)
+            or Color3.fromRGB(22, 36, 54)
+    end
+
+    connect(pinnedClean.Activated, function()
+        if not alive() or autoFarm or homeworkEnabled or homeworkBusy then return end
+        enabled = not enabled
+        updateButtons()
+        paintPinnedClean()
+    end)
+
+    if contentScroll then
+        contentScroll.Position = UDim2.fromOffset(58, 91)
+        contentScroll.Size = UDim2.new(1, -64, 1, -97)
+    end
+
+    paintPinnedClean()
+end
+]====]
 
 -- No runtime replacement is needed.
 

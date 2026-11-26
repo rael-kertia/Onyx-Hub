@@ -4,6 +4,177 @@
 local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-fix14-recompile-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
+
+local onyxHomeworkPathfindingMarker = "wrapper = wrapper:sub(1, at - 1) .. patch .. \"\\n\" .. wrapper:sub(at)"
+local onyxHomeworkPathfindingPatch = [==[
+
+patch = patch .. [====[
+-- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.
+-- Aksi TrashBag (Ambil/Buang) tetap memakai TP lama.
+local function onyxHomeworkReplaceBetween(text, firstMarker, nextMarker, replacement)
+    local a = text:find(firstMarker, 1, true)
+    assert(a, "HOMEWORK PATHFINDING: fungsi awal tidak ditemukan")
+    local b = text:find(nextMarker, a + #firstMarker, true)
+    assert(b, "HOMEWORK PATHFINDING: batas fungsi tidak ditemukan")
+    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
+end
+
+source = onyxHomeworkReplaceBetween(
+    source,
+    "local function hwMove(prompt)",
+    "local function hwUse(prompt)",
+    [=[
+local function hwMove(prompt)
+    if not alive() or not homeworkEnabled then return false end
+
+    local r = hwRoot()
+    local q = hwPart(prompt)
+    if not r or not q then return false end
+
+    -- TP lama tetap dipakai untuk mengambil/membuang TrashBag.
+    if prompt.ActionText ~= "Bersihkan" then
+        hwForceStand()
+        r = hwRoot()
+        if not r then return false end
+        r.CFrame = CFrame.new(q.Position + Vector3.new(0, 3.5, 0))
+        r.AssemblyLinearVelocity = Vector3.zero
+        r.AssemblyAngularVelocity = Vector3.zero
+        task.wait(0.15)
+        hwForceStand()
+        task.wait(0.15)
+        hwForceStand()
+        return alive() and homeworkEnabled
+    end
+
+    hwForceStand()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    r = hwRoot()
+    if not humanoid or not r then return false end
+
+    local pathService = game:GetService("PathfindingService")
+    local destination = q.Position
+
+    local function followPath()
+        r = hwRoot()
+        if not r then return false end
+
+        local path = pathService:CreatePath({
+            AgentRadius = 2,
+            AgentHeight = 5,
+            AgentCanJump = true,
+            WaypointSpacing = 4
+        })
+
+        local computed = pcall(function()
+            path:ComputeAsync(r.Position, destination)
+        end)
+
+        if not computed or path.Status ~= Enum.PathStatus.Success then
+            return false
+        end
+
+        local waypoints = path:GetWaypoints()
+        if #waypoints == 0 then return false end
+
+        local blockedAt = nil
+        local blockedConnection = path.Blocked:Connect(function(index)
+            blockedAt = index
+        end)
+
+        for index, waypoint in ipairs(waypoints) do
+            if not alive() or not homeworkEnabled then
+                blockedConnection:Disconnect()
+                return false
+            end
+
+            if blockedAt and blockedAt <= index then
+                blockedConnection:Disconnect()
+                return false
+            end
+
+            r = hwRoot()
+            if not r then
+                blockedConnection:Disconnect()
+                return false
+            end
+
+            if waypoint.Action == Enum.PathWaypointAction.Jump then
+                humanoid.Jump = true
+            end
+
+            humanoid:MoveTo(waypoint.Position)
+            local distance = (r.Position - waypoint.Position).Magnitude
+            local deadline = os.clock() + math.max(4, distance / 8 + 2)
+
+            while os.clock() < deadline do
+                if not alive() or not homeworkEnabled then
+                    blockedConnection:Disconnect()
+                    return false
+                end
+
+                r = hwRoot()
+                if not r then
+                    blockedConnection:Disconnect()
+                    return false
+                end
+
+                if (r.Position - waypoint.Position).Magnitude <= 3 then
+                    break
+                end
+
+                if blockedAt and blockedAt <= index then
+                    blockedConnection:Disconnect()
+                    return false
+                end
+
+                task.wait(0.1)
+            end
+
+            r = hwRoot()
+            if not r or (r.Position - waypoint.Position).Magnitude > 4 then
+                blockedConnection:Disconnect()
+                return false
+            end
+        end
+
+        blockedConnection:Disconnect()
+        r = hwRoot()
+        return r ~= nil
+            and (r.Position - destination).Magnitude
+                <= math.max(prompt.MaxActivationDistance or 10, 8) + 2
+    end
+
+    -- Hitung ulang satu kali jika jalur pertama terhalang.
+    local reached = false
+    for attempt = 1, 2 do
+        if not alive() or not homeworkEnabled then return false end
+        if followPath() then
+            reached = true
+            break
+        end
+        task.wait(0.2)
+    end
+
+    if not reached then
+        setStatus("PATHFINDING RUMAH TERHALANG")
+        return false
+    end
+
+    hwForceStand()
+    return alive() and homeworkEnabled
+end
+]=],
+    "HOMEWORK PATHFINDING MOVE"
+)
+]====]
+
+]==]
+assert(response:find(onyxHomeworkPathfindingMarker, 1, true),
+    "ONYX TEST: marker loader pathfinding tidak ditemukan")
+response = response:gsub(onyxHomeworkPathfindingMarker,
+    function() return onyxHomeworkPathfindingPatch .. "\n" .. onyxHomeworkPathfindingMarker end, 1)
+
 local chunk, compileError = loadstring(response)
 assert(type(chunk) == "function", "ONYX HUB: kompilasi gagal: " .. tostring(compileError))
 chunk()

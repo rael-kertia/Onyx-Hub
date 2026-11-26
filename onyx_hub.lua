@@ -988,25 +988,8 @@ end
 ]=]
 )
 
--- REMOVE THE LEGACY FARM BUTTON; HOMEWORK AND CLEAN REMAIN.
--- Wrapper versions that already removed Farm should pass through unchanged.
-if source:find("local farmButton = makeButton(", 1, true) then
-    source = onyxReplaceBetween(
-        source,
-        "local farmButton = makeButton(",
-        "local homeworkButton = makeButton(",
-        ""
-    )
-end
-
-if source:find("    farmButton.Text = autoFarm", 1, true) then
-    source = onyxReplaceBetween(
-        source,
-        "    farmButton.Text = autoFarm",
-        "    homeworkButton.Text = homeworkEnabled",
-        ""
-    )
-end
+-- Farm button and updater are already absent from the current core source.
+-- No runtime replacement is needed.
 
 ]==]
 

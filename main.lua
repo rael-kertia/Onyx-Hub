@@ -44,7 +44,7 @@ end
 
 local ok, err = pcall(function()
     status("MENGUNDUH CORE...", false)
-    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126d"
+    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126e"
     local response = game:HttpGet(url)
     assert(type(response) == "string" and #response > 10000,
         "CORE TIDAK TERUNDUH / RESPONSE KOSONG")

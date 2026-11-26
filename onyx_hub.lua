@@ -1,11 +1,66 @@
 -- ONYX HUB - CORE LOADER
 -- Loader diagnostics are intentionally silent; no status UI is shown.
 local function diagnosticStatus(message, failed)
-    if failed then
-        local report = "ONYX FIX13: " .. tostring(message)
-        pcall(function() if setclipboard then setclipboard(report) end end)
-        pcall(function() warn(report) end)
-    end
+    if not failed then return end
+    local report = "ONYX BOOT ERROR: " .. tostring(message)
+    pcall(function()
+        if typeof(setclipboard) == "function" then setclipboard(report) end
+    end)
+    pcall(function() warn(report) end)
+
+    -- Error wajib terlihat di layar; Delta console tidak dapat diandalkan.
+    pcall(function()
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local playerGui = player and player:FindFirstChildOfClass("PlayerGui")
+        if not playerGui then return end
+
+        local old = playerGui:FindFirstChild("OnyxBootDiagnostic")
+        if old then old:Destroy() end
+
+        local screen = Instance.new("ScreenGui")
+        screen.Name = "OnyxBootDiagnostic"
+        screen.ResetOnSpawn = false
+        screen.DisplayOrder = 100000
+        screen.Parent = playerGui
+
+        local panel = Instance.new("Frame")
+        panel.Size = UDim2.new(1, -24, 0, 118)
+        panel.Position = UDim2.new(0, 12, 0, 80)
+        panel.BackgroundColor3 = Color3.fromRGB(45, 17, 22)
+        panel.BorderSizePixel = 0
+        panel.Parent = screen
+        Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+
+        local label = Instance.new("TextLabel")
+        label.Size = UDim2.new(1, -20, 1, -20)
+        label.Position = UDim2.fromOffset(10, 10)
+        label.BackgroundTransparency = 1
+        label.Text = report .. "\\nTekan SALIN ERROR untuk menyalin."
+        label.TextColor3 = Color3.fromRGB(255, 225, 225)
+        label.TextWrapped = true
+        label.TextSize = 12
+        label.Font = Enum.Font.GothamBold
+        label.TextXAlignment = Enum.TextXAlignment.Left
+        label.TextYAlignment = Enum.TextYAlignment.Center
+        label.Parent = panel
+
+        local copy = Instance.new("TextButton")
+        copy.Size = UDim2.fromOffset(108, 26)
+        copy.Position = UDim2.new(1, -118, 1, -32)
+        copy.BackgroundColor3 = Color3.fromRGB(135, 45, 55)
+        copy.Text = "SALIN ERROR"
+        copy.TextColor3 = Color3.new(1, 1, 1)
+        copy.TextSize = 10
+        copy.Font = Enum.Font.GothamBold
+        copy.Parent = panel
+        copy.Activated:Connect(function()
+            pcall(function()
+                if typeof(setclipboard) == "function" then setclipboard(report) end
+            end)
+            label.Text = report .. "\\nSudah dicoba disalin."
+        end)
+    end)
 end
 local diagnosticGui = nil
 

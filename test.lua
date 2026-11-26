@@ -209,7 +209,7 @@ local function hwMove(prompt)
             local lastPosition = r.Position
             local lastProgressAt = os.clock()
             local lastMoveCommand = os.clock()
-            local doorWaitUsed = false
+            local doorWaitAttempts = 0
 
             while os.clock() < deadline do
                 if not alive() or not homeworkEnabled then
@@ -267,12 +267,21 @@ local function hwMove(prompt)
                     -- Daun pintu dapat mendorong karakter saat melewati ambang.
                     -- Tunggu ayunan pintu selesai, lalu coba waypoint yang sama sekali lagi
                     -- sebelum membatalkan rute dan melakukan replan.
-                    if not doorWaitUsed then
-                        doorWaitUsed = true
-                        humanoid:MoveTo(r.Position)
-                        pathDiag("PINTU MENDORONG - JEDA SEBELUM MANUVER SAMPING "
+                    if doorWaitAttempts < 3 then
+                        doorWaitAttempts = doorWaitAttempts + 1
+                        -- Sentuh pintu sebentar untuk memicu animasi bukaan,
+                        -- lalu berhenti agar karakter tidak terus melawan daun pintu.
+                        pathDiag("PICU PINTU " .. tostring(doorWaitAttempts) .. "/3 - WAYPOINT "
                             .. tostring(index) .. "/" .. tostring(#waypoints))
-                        task.wait(1.0)
+                        humanoid:MoveTo(waypoint.Position)
+                        task.wait(0.35)
+                        r = hwRoot()
+                        if not r then
+                            blockedConnection:Disconnect()
+                            return false
+                        end
+                        humanoid:MoveTo(r.Position)
+                        task.wait(2.5)
                         if not alive() or not homeworkEnabled then
                             blockedConnection:Disconnect()
                             return false
@@ -285,86 +294,15 @@ local function hwMove(prompt)
                         if (r.Position - waypoint.Position).Magnitude <= 3 then
                             break
                         end
-
-                        -- Coba mengitari daun pintu dari sisi kiri lalu kanan.
-                        local travel = Vector3.new(
-                            waypoint.Position.X - lastPosition.X,
-                            0,
-                            waypoint.Position.Z - lastPosition.Z
-                        )
-                        if travel.Magnitude < 0.1 then
-                            travel = Vector3.new(
-                                waypoint.Position.X - r.Position.X,
-                                0,
-                                waypoint.Position.Z - r.Position.Z
-                            )
-                        end
-                        if travel.Magnitude < 0.1 then
-                            travel = Vector3.new(0, 0, -1)
-                        end
-                        travel = travel.Unit
-                        local side = Vector3.new(-travel.Z, 0, travel.X)
-                        local sideSucceeded = false
-
-                        for sideAttempt = 1, 2 do
-                            if not alive() or not homeworkEnabled then
-                                blockedConnection:Disconnect()
-                                return false
-                            end
-                            r = hwRoot()
-                            if not r then
-                                blockedConnection:Disconnect()
-                                return false
-                            end
-                            local sign = sideAttempt == 1 and 1 or -1
-                            local sideTarget = r.Position + side * (3.5 * sign)
-                            pathDiag("COBA SISI " .. (sign == 1 and "KIRI" or "KANAN")
-                                .. " PINTU - WAYPOINT " .. tostring(index))
-                            humanoid:MoveTo(sideTarget)
-
-                            local sideDeadline = os.clock() + 2.5
-                            while os.clock() < sideDeadline do
-                                if not alive() or not homeworkEnabled then
-                                    blockedConnection:Disconnect()
-                                    return false
-                                end
-                                r = hwRoot()
-                                if not r then
-                                    blockedConnection:Disconnect()
-                                    return false
-                                end
-                                if (r.Position - sideTarget).Magnitude <= 2.0 then
-                                    sideSucceeded = true
-                                    break
-                                end
-                                task.wait(0.1)
-                            end
-
-                            if sideSucceeded then break end
-                            humanoid:MoveTo(r.Position)
-                            task.wait(0.15)
-                        end
-
-                        r = hwRoot()
-                        if sideSucceeded and r then
-                            pathDiag("MANUVER SAMPING BERHASIL - LANJUT WAYPOINT "
-                                .. tostring(index))
-                            lastPosition = r.Position
-                            lastProgressAt = os.clock()
-                            lastMoveCommand = os.clock()
-                            deadline = deadline + 4
-                            humanoid:MoveTo(waypoint.Position)
-                        else
-                            humanoid:MoveTo(r and r.Position or waypoint.Position)
-                            pathDiag("KEDUA SISI PINTU GAGAL - REPLAN WAYPOINT "
-                                .. tostring(index) .. "/" .. tostring(#waypoints))
-                            task.wait(0.4)
-                            blockedConnection:Disconnect()
-                            return false
-                        end
+                        lastPosition = r.Position
+                        lastProgressAt = os.clock()
+                        lastMoveCommand = os.clock()
+                        deadline = deadline + 3.5
+                        humanoid:MoveTo(waypoint.Position)
+                        pathDiag("SELESAI MENUNGGU PINTU - COBA LINTASI LAGI")
                     else
                         humanoid:MoveTo(r.Position)
-                        pathDiag("PINTU MASIH MENGHALANG - REPLAN WAYPOINT "
+                        pathDiag("PINTU TETAP TERTUTUP SETELAH 3 PICU - REPLAN WAYPOINT "
                             .. tostring(index) .. "/" .. tostring(#waypoints))
                         task.wait(0.65)
                         blockedConnection:Disconnect()
@@ -399,22 +337,24 @@ local function hwMove(prompt)
 
     --    -- Cari rute ke titik pendekatan yang dapat dicapai, lalu jalankan.
     local reached = false
-    for attempt = 1, 1 do
+    for attempt = 1, 3 do
         if not alive() or not homeworkEnabled then return false end
-        pathDiag("MENCARI TITIK PENDEKATAN - SATU PUTARAN DIAGNOSTIK")
+        pathDiag("PENCARIAN RUTE UNTUK PROMPT YANG SAMA - PERCOBAAN "
+            .. tostring(attempt) .. "/3")
         local route = findApproachPath()
         if route and followPath(route) then
             reached = true
             break
+        elseif route then
+            pathDiag("RUTE TERHALANG - TETAP PADA PROMPT INI, COBA ULANG")
+        else
+            pathDiag("TITIK PENDEKATAN GAGAL: " .. tostring(lastPathError))
         end
-        if not route then
-            pathDiag("TIDAK ADA TITIK PENDEKATAN: " .. tostring(lastPathError))
-        end
-        task.wait(0.7)
+        if attempt < 3 then task.wait(1.0) end
     end
 
     if not reached then
-        pathDiag("APPROACH SEARCH FAILED AFTER 1 PASS; LAST_ERROR=" .. tostring(lastPathError))
+        pathDiag("GAGAL SETELAH 3 PERCOBAAN PADA PROMPT YANG SAMA; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end

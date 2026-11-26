@@ -1320,41 +1320,27 @@ end
 -- Hanya hwMove yang diganti menjadi Pathfinding; deteksi rumah/prompt
 -- tidak disentuh oleh wrapper.
 
--- AUTO CLEAN V18.2: gunakan loop Auto Cleaner asli Rael.
--- Jangan mematikan seluruh Auto Clean hanya karena TrashBag sedang dibawa;
--- getNearest sendiri yang memilih prompt Ambil/Buang sesuai status bawaan.
-source = onyxReplaceBetween(
-    source,
-    "task.spawn(function()\n    while alive() and gui.Parent do\n        task.wait(SCAN_DELAY)",
-    "-- AUTO FARM LOOP",
-    [=[
-task.spawn(function()
-    while alive() and gui.Parent do
-        task.wait(SCAN_DELAY)
-
+-- AUTO CLEAN V18.2: pertahankan loop asli core dan ubah hanya guard
+-- yang sebelumnya menghentikan seluruh loop saat TrashBag sedang dibawa.
+-- Tidak bergantung pada marker Auto Farm Loop.
+local oldCleanGuard = [=[
+        if not enabled or busy
+        or homeworkEnabled or homeworkBusy
+        or hwCarrying() then
+            continue
+        end]=]
+local newCleanGuard = [=[
         if not enabled or busy or homeworkEnabled or homeworkBusy then
             continue
-        end
-
-        local character = player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        if not root then continue end
-
-        local prompt = getNearest(root)
-        if prompt and enabled and not homeworkEnabled and not homeworkBusy then
-            busy = true
-            lastAttempt[prompt] = os.clock()
-            activatePrompt(prompt)
-            task.wait(0.1)
-            busy = false
-        end
-    end
-end)
-
-]=]
-)
-
-
+        end]=]
+local cleanGuardAt = source:find(oldCleanGuard, 1, true)
+assert(cleanGuardAt, "AUTO CLEAN PATCH: guard asli tidak ditemukan")
+assert(not source:find(oldCleanGuard, cleanGuardAt + #oldCleanGuard, true),
+    "AUTO CLEAN PATCH: guard asli duplikat")
+source = source:sub(1, cleanGuardAt - 1)
+    .. newCleanGuard
+    .. source:sub(cleanGuardAt + #oldCleanGuard)
+    
 -- Farm, Feed, and Convert controls remain absent; Auto Clean stays enabled in GUI.
 
 

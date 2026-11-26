@@ -1004,6 +1004,44 @@ end
 ]=]
 )
 
+-- HOMEWORK STAND FIX: jangan nolkan velocity saat karakter sedang berjalan.
+source = onyxReplaceBetween(
+    source,
+    "local function hwForceStand()",
+    "local function hwMove(prompt)",
+    [=[
+local function hwForceStand()
+    local character = player.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = character and character:FindFirstChild("HumanoidRootPart")
+    if not humanoid then return end
+
+    local seated = humanoid.Sit
+        or humanoid:GetState() == Enum.HumanoidStateType.Seated
+
+    -- Dipanggil periodik oleh Homework. Saat tidak duduk, jangan
+    -- mengubah velocity karena itu akan melawan Humanoid:MoveTo().
+    if not seated then return end
+
+    humanoid.Sit = false
+    humanoid.Jump = false
+    pcall(function()
+        humanoid:ChangeState(Enum.HumanoidStateType.GettingUp)
+    end)
+    task.wait(0.12)
+
+    if root then
+        root.AssemblyLinearVelocity = Vector3.zero
+        root.AssemblyAngularVelocity = Vector3.zero
+    end
+
+    pcall(function()
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    end)
+end
+]=]
+)
+
 -- HOMEWORK MOVEMENT: GROUND-VALIDATED PATHFINDING + REPATH.
 source = onyxReplaceBetween(
     source,

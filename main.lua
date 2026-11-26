@@ -55,6 +55,20 @@ local ok, err = pcall(function()
     status("CORE DIJALANKAN...", false)
     chunk()
     status("CORE SELESAI DIPANGGIL. CEK GUI ONYX.", false)
+
+    -- Setelah GUI utama Onyx muncul, bersihkan kedua GUI diagnostik.
+    task.delay(2, function()
+        pcall(function()
+            local currentPlayerGui = player:FindFirstChildOfClass("PlayerGui")
+            if not currentPlayerGui then return end
+
+            local loaderDiagnostic = currentPlayerGui:FindFirstChild("OnyxLoaderDiagnostic")
+            if loaderDiagnostic then loaderDiagnostic:Destroy() end
+
+            local coreDiagnostic = currentPlayerGui:FindFirstChild("OnyxBootDiagnostic")
+            if coreDiagnostic then coreDiagnostic:Destroy() end
+        end)
+    end)
 end)
 
 if not ok then

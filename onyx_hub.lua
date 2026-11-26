@@ -182,6 +182,13 @@ assert(source:find("connect(miniButton.Activated, function()", 1, true),
 -- disalin dari implementasi Rael's Tricks yang sudah dipulihkan.
 local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
     local a = text:find(firstMarker, 1, true)
+
+    -- Farm UI sudah sengaja dihapus dari core. Patch lama yang masih
+    -- mencoba menghapus marker ini harus dilewati, bukan menggagalkan boot.
+    if not a and firstMarker == "local farmButton = makeButton(" then
+        return text
+    end
+
     assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
     local b = text:find(nextMarker, a + #firstMarker, true)
     assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)

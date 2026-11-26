@@ -977,7 +977,8 @@ end
 
 -- AUTO CLEAN BUTTON: GUI core saat ini memakai makeButton multiline.
 -- cleanButton dibuat di guiCode; jangan mencari signature makeToggle lama.
-assert(source:find('local cleanButton = makeButton(', 1, true),
+assert(source:find('local cleanButton = makeToggle(', 1, true)
+    or source:find('local cleanButton = makeButton(', 1, true),
     "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
 
 

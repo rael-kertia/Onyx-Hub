@@ -1152,4 +1152,5 @@ if bootOK then
     end)
 else
     diagnosticStatus("GAGAL: " .. tostring(bootError):sub(1, 180), true)
+    error("ONYX CORE BOOT FAILED: " .. tostring(bootError), 0)
 end

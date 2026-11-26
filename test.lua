@@ -1,7 +1,9 @@
 -- ONYX HUB | MAIN LOADER
 -- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-3"
+pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V4 START" end)
+
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-4"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 

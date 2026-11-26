@@ -525,9 +525,11 @@ local function jamWorker()
             end
 
             -- Validasi ulang tepat sebelum setiap tembakan.
-            if house.Parent ~= folder
-            or house:GetAttribute("OwnerUserId") ~= player.UserId
-            or jamRentedCount(house) <= 0 then
+            if (
+                house.Parent ~= folder
+                or house:GetAttribute("OwnerUserId") ~= player.UserId
+                or jamRentedCount(house) <= 0
+            ) then
                 setStatus("JAM AJAIB: TARGET BERUBAH - DILEWATI")
                 continue
             end

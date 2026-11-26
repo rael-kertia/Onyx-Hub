@@ -870,6 +870,18 @@ do
     end
     contentScroll.CanvasSize = UDim2.new(0, 0, 0, redesignedBottom + 12)
 
+    -- FINAL AUTO CLEAN PLACEMENT: resolve the actual GUI instance by name.
+    local autoCleanControl = frame:FindFirstChild("CleanButton", true)
+    if autoCleanControl and autoCleanControl:IsA("TextButton") then
+        autoCleanControl.Parent = contentScroll
+        autoCleanControl.Visible = true
+        autoCleanControl.Active = true
+        autoCleanControl.Size = UDim2.new(1, -24, 0, 36)
+        autoCleanControl.Position = UDim2.fromOffset(12, 116)
+        autoCleanControl.ZIndex = 8
+        contentScroll.CanvasSize = UDim2.new(0, 0, 0, math.max(redesignedBottom + 12, 164))
+    end
+
     -- Icon rail stays available while the expandable control panel is hidden.
     local rail = Instance.new("Frame")
     rail.Name = "OnyxIconRail"

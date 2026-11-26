@@ -249,7 +249,7 @@ task.spawn(function()
                 add("LAST_MOVE", onyxHwDiag.lastMove)
                 add("LAST_MOVE_RESULT", onyxHwDiag.lastMoveResult)
                 add("CARRYING_TRASH", hwCarrying() ~= nil)
-                local report = "ONYX HOMEWORK DIAGNOSTIC\\n" .. table.concat(lines, "\\n")
+                local report = "ONYX HOMEWORK DIAGNOSTIC\n" .. table.concat(lines, "\n")
                 pcall(function()
                     if typeof(setclipboard) == "function" then setclipboard(report) end
                 end)
@@ -266,7 +266,7 @@ end)
 local diagMarker = "local function homeworkRun()"
 local diagAt = source:find(diagMarker, 1, true)
 assert(diagAt, "HOMEWORK DIAGNOSTIC: marker homeworkRun tidak ditemukan")
-source = source:sub(1, diagAt - 1) .. diagInsert .. "\\n" .. source:sub(diagAt)
+source = source:sub(1, diagAt - 1) .. diagInsert .. "\n" .. source:sub(diagAt)
 ]====]
 
 ]==]

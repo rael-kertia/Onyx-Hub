@@ -743,7 +743,7 @@ do
     heroSub.Size = UDim2.new(1, -36, 0, 20)
     heroSub.Position = UDim2.fromOffset(23, 38)
     heroSub.BackgroundTransparency = 1
-    heroSub.Text = "AUTOMATION  •  FARM  •  CONTROL"
+    heroSub.Text = "HOMEWORK  •  CLEAN  •  CONTROL"
     heroSub.TextColor3 = Color3.fromRGB(142, 190, 199)
     heroSub.TextSize = 9
     heroSub.Font = Enum.Font.GothamBold
@@ -898,6 +898,183 @@ do
 end
 ]====]
 
+
+-- HOMEWORK PATHFINDING: WALK TO REACHABLE APPROACH POINTS
+source = onyxReplaceBetween(
+    source,
+    "local function hwMove(prompt)",
+    "local function hwUse(prompt)",
+    [=[
+local function hwMove(prompt)
+    if not alive() or not homeworkEnabled then return false end
+    if not prompt or not prompt.Parent then return false end
+
+    local character = player.Character
+    local root = hwRoot()
+    local part = hwPart(prompt)
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    if not character or not root or not part or not humanoid then return false end
+
+    hwForceStand()
+    root = hwRoot()
+    if not root then return false end
+
+    local PathfindingService = game:GetService("PathfindingService")
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {character, part}
+    rayParams.IgnoreWater = true
+
+    local directions = {
+        Vector3.new(1, 0, 0),
+        Vector3.new(-1, 0, 0),
+        Vector3.new(0, 0, 1),
+        Vector3.new(0, 0, -1),
+        Vector3.new(0.707, 0, 0.707),
+        Vector3.new(-0.707, 0, 0.707),
+        Vector3.new(0.707, 0, -0.707),
+        Vector3.new(-0.707, 0, -0.707)
+    }
+
+    local bestPath, bestTarget
+    local bestDistance = math.huge
+    local rootHeight = humanoid.HipHeight + root.Size.Y * 0.5 + 0.15
+
+    -- Cari titik berdiri di sekitar prompt. Raycast memastikan target berada
+    -- di atas permukaan lantai, bukan di dalam tembok atau objek kotoran.
+    for _, radius in ipairs({3.25, 4.5}) do
+        for _, direction in ipairs(directions) do
+            if not alive() or not homeworkEnabled then return false end
+
+            local x = part.Position.X + direction.X * radius
+            local z = part.Position.Z + direction.Z * radius
+            local rayOrigin = Vector3.new(x, part.Position.Y + 7, z)
+            local hit = workspace:Raycast(
+                rayOrigin,
+                Vector3.new(0, -18, 0),
+                rayParams
+            )
+
+            if hit and hit.Normal.Y > 0.55 then
+                local target = hit.Position + Vector3.new(0, rootHeight, 0)
+                local verticalDifference = math.abs(target.Y - root.Position.Y)
+
+                -- Batasi target yang jelas berada di level berbeda/di balik
+                -- struktur; tangga tetap dapat dilalui karena beda lantai ~16.
+                if verticalDifference <= 24 then
+                    local path = PathfindingService:CreatePath({
+                        AgentRadius = 2,
+                        AgentHeight = 5,
+                        AgentCanJump = true,
+                        WaypointSpacing = 3
+                    })
+
+                    local computed = pcall(function()
+                        path:ComputeAsync(root.Position, target)
+                    end)
+
+                    if computed and path.Status == Enum.PathStatus.Success then
+                        local distance = 0
+                        local waypoints = path:GetWaypoints()
+                        for index = 2, #waypoints do
+                            distance += (waypoints[index].Position
+                                - waypoints[index - 1].Position).Magnitude
+                        end
+
+                        if distance < bestDistance then
+                            bestDistance = distance
+                            bestPath = path
+                            bestTarget = target
+                        end
+                    end
+                end
+            end
+        end
+
+        if bestPath then break end
+    end
+
+    if not bestPath or not bestTarget then
+        return false
+    end
+
+    local waypoints = bestPath:GetWaypoints()
+    if #waypoints == 0 then return false end
+
+    local blocked = false
+    local currentWaypoint = 0
+    local blockedConnection = bestPath.Blocked:Connect(function(blockedIndex)
+        if blockedIndex >= currentWaypoint then
+            blocked = true
+        end
+    end)
+
+    local reachedAll = true
+    for index, waypoint in ipairs(waypoints) do
+        if not alive() or not homeworkEnabled or not humanoid.Parent then
+            reachedAll = false
+            break
+        end
+        if blocked then
+            reachedAll = false
+            break
+        end
+
+        currentWaypoint = index
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            humanoid.Jump = true
+        end
+
+        local reached = false
+        local moveConnection = humanoid.MoveToFinished:Connect(function(success)
+            reached = success
+        end)
+
+        humanoid:MoveTo(waypoint.Position)
+        local distance = (root.Position - waypoint.Position).Magnitude
+        local speed = math.max(humanoid.WalkSpeed, 8)
+        local deadline = os.clock() + math.clamp(distance / speed + 2.5, 2.5, 8)
+
+        while alive() and homeworkEnabled and not reached
+        and not blocked and os.clock() < deadline do
+            task.wait(0.1)
+        end
+
+        moveConnection:Disconnect()
+
+        if not reached then
+            reachedAll = false
+            break
+        end
+    end
+
+    blockedConnection:Disconnect()
+    if not reachedAll or not alive() or not homeworkEnabled then
+        pcall(function() humanoid:MoveTo(root.Position) end)
+        return false
+    end
+
+    -- Jangan aktifkan prompt jika karakter ternyata belum cukup dekat.
+    local activationRange = math.max(prompt.MaxActivationDistance or 0, 7)
+    return (root.Position - part.Position).Magnitude <= activationRange + 2
+end
+]=]
+)
+
+-- REMOVE THE LEGACY FARM BUTTON; HOMEWORK AND CLEAN REMAIN.
+source = onyxReplaceBetween(
+    source,
+    "local farmButton = makeButton(",
+    "local homeworkButton = makeButton(",
+    ""
+)
+source = onyxReplaceBetween(
+    source,
+    "    farmButton.Text = autoFarm",
+    "    homeworkButton.Text = homeworkEnabled",
+    ""
+)
+
 ]==]
 
 wrapper = wrapper:sub(1, at - 1) .. patch .. "\n" .. wrapper:sub(at)
@@ -908,224 +1085,7 @@ assert(chunk, "Wrapper compile gagal: " .. tostring(compileError))
 diagnosticStatus("MENJALANKAN CORE...", false)
 chunk()
 
--- Load the existing Farm/Feed/Convert engine without rewriting its working logic.
-diagnosticStatus("MENGINTEGRASIKAN FARM / FEED / CONVERT...", false)
-local farmOK, farmError = pcall(function()
-    -- CREATE FARM CONTROLS FIRST, OUTSIDE THE FARM ENGINE COMPILER.
-    -- This guarantees the controls render even if the engine source later fails to compile.
-    local Players = game:GetService("Players")
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local mainGui = playerGui:WaitForChild("RaelsTricksV18", 15)
-    assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
-    local scroll = mainGui:FindFirstChild("FeatureScroll", true)
-    assert(scroll and scroll:IsA("ScrollingFrame"), "FEATURESCROLL ONYX TIDAK DITEMUKAN")
-    -- Bersihkan semua sisa UI Farm versi lama, termasuk yang tersarang
-    -- di dalam card/frame; bukan hanya anak langsung FeatureScroll.
-    for _, stale in ipairs(scroll:GetDescendants()) do
-        if stale.Name == "FarmSectionHeader"
-        or stale.Name == "AutoFarm"
-        or stale.Name == "AutoFeed"
-        or stale.Name == "AutoConvert" then
-            stale:Destroy()
-        elseif stale:IsA("TextButton") then
-            local label = (stale.Text or ""):upper():gsub("%s+", " ")
-            if label:match("^AUTO FARM")
-            or label:match("^AUTO FEED")
-            or label:match("^AUTO CONVERT") then
-                stale:Destroy()
-            end
-        end
-    end
-    -- Hapus juga GUI Farm terpisah yang mungkin tertinggal dari versi sebelumnya.
-    local staleFarmGui = playerGui:FindFirstChild("RaelFarmFeedConvert")
-    if staleFarmGui then staleFarmGui:Destroy() end
-    for _, child in ipairs(scroll:GetChildren()) do
-        if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
-        and child.Name ~= "FeatureSectionLabel" and child.Position.Y.Offset >= 116 then
-            child.Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset,
-                child.Position.Y.Scale, child.Position.Y.Offset + 160)
-        end
-    end
-    local farmSection = Instance.new("TextLabel")
-    farmSection.Name = "FarmSectionHeader"
-    farmSection.Size = UDim2.new(1, -24, 0, 20)
-    farmSection.Position = UDim2.fromOffset(12, 116)
-    farmSection.BackgroundTransparency = 1
-    farmSection.Text = "FARM AUTOMATION"
-    farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
-    farmSection.Font = Enum.Font.GothamBlack
-    farmSection.TextSize = 10
-    farmSection.TextXAlignment = Enum.TextXAlignment.Left
-    farmSection.ZIndex = 20
-    farmSection.Parent = scroll
-    local function createFarmToggle(name, label, y, color)
-        local button = Instance.new("TextButton")
-        button.Name = name
-        button.Size = UDim2.new(1, -24, 0, 36)
-        button.Position = UDim2.fromOffset(12, y)
-        button.BackgroundColor3 = color
-        button.TextColor3 = Color3.new(1, 1, 1)
-        button.Text = label .. "  [OFF]"
-        button.TextSize = 11
-        button.Font = Enum.Font.GothamBold
-        button.ZIndex = 20
-        button.Visible = true
-        button.Active = true
-        button.AutoButtonColor = true
-        button.Parent = scroll
-        Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
-        local stroke = Instance.new("UIStroke")
-        stroke.Color = Color3.fromRGB(47, 88, 105)
-        stroke.Thickness = 1
-        stroke.Parent = button
-        return button
-    end
-    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 140, Color3.fromRGB(34, 94, 75))
-    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 182, Color3.fromRGB(44, 83, 128))
-    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 224, Color3.fromRGB(113, 77, 39))
-    -- Canvas harus mengikuti seluruh isi menu; jangan dipatok 420px.
-    -- Konten dashboard + tombol Farm bisa lebih panjang dari tinggi panel.
-    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    scroll.ScrollingEnabled = true
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
-    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
-    getgenv().ONYX_FARM_UI = {
-        AutoFarm = autoFarmButton,
-        AutoFeed = autoFeedButton,
-        AutoConvert = autoConvertButton,
-        gui = mainGui,
-        scroll = scroll
-    }
-
-    local farmUrl = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/farm_feed_convert.lua?v=onyx-farm-visible-fix13-20261125"
-    local farmSource = game:HttpGet(farmUrl)
-    assert(type(farmSource) == "string" and #farmSource > 20000, "FARM CORE KOSONG / GAGAL DIUNDUH")
-    farmSource = farmSource:gsub("RAEL // FARM SYSTEM", "ONYX // FARM SYSTEM")
-
-    local integratedUI = [=[
--- ONYX EMBEDDED FARM ENGINE UI BINDINGS
-local gui = playerGui:WaitForChild("RaelsTricksV18", 15)
-assert(gui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
-local panel = gui:FindFirstChild("FeatureScroll", true)
-assert(panel and panel:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
-local farmUI = getgenv().ONYX_FARM_UI
-assert(type(farmUI) == "table", "KONTROL FARM ONYX BELUM DIBUAT")
-local farmButton = farmUI.AutoFarm
-local feedButton = farmUI.AutoFeed
-local convertButton = farmUI.AutoConvert
-assert(farmButton and feedButton and convertButton, "TOMBOL FARM ONYX TIDAK LENGKAP")
-local function setStatus(message) end
-local function paint(button, label, enabled, onColor, offColor)
-    button.Text = label .. (enabled and "  [ON]" or "  [OFF]")
-    button.BackgroundColor3 = enabled and onColor or offColor
-end
-local function updateUI()
-    paint(farmButton, "AUTO FARM", autoFarm, Color3.fromRGB(32,145,94), Color3.fromRGB(34,94,75))
-    paint(feedButton, "AUTO FEED", autoFeed, Color3.fromRGB(43,126,190), Color3.fromRGB(44,83,128))
-    paint(convertButton, "AUTO CONVERT", autoConvert, Color3.fromRGB(184,123,48), Color3.fromRGB(113,77,39))
-end
-]=]
-    local first = assert(farmSource:find("-- NEW GUI: three feature toggles only", 1, true), "BLOK GUI FARM ASLI TIDAK DITEMUKAN")
-    local last = assert(farmSource:find("-- DROPPING SCANNER", first, true), "AKHIR BLOK GUI FARM TIDAK DITEMUKAN")
-    assert(last > first, "RENTANG BLOK GUI FARM TIDAK VALID")
-    farmSource = farmSource:sub(1, first - 1) .. integratedUI .. "\n" .. farmSource:sub(last)
-    local farmChunk, farmCompileError = loadstring(farmSource)
-    assert(type(farmChunk) == "function", "FARM COMPILE GAGAL: " .. tostring(farmCompileError))
-    farmChunk()
-
-    local Players = game:GetService("Players")
-    local playerGui = Players.LocalPlayer:WaitForChild("PlayerGui")
-    local mainGui = playerGui:FindFirstChild("RaelsTricksV18")
-    assert(mainGui, "GUI UTAMA ONYX TIDAK DITEMUKAN")
-    local scroll = mainGui:FindFirstChild("FeatureScroll", true)
-    assert(scroll and scroll:IsA("ScrollingFrame"), "AREA SCROLL ONYX TIDAK DITEMUKAN")
-    for _, controlName in ipairs({"AutoFarm", "AutoFeed", "AutoConvert"}) do
-        local control = scroll:FindFirstChild(controlName)
-        assert(control and control:IsA("TextButton"), "KONTROL FARM TIDAK TERTANAM: " .. controlName)
-    end
-    assert(not playerGui:FindFirstChild("RaelFarmFeedConvert"), "GUI FARM TERPISAH MASIH ADA")
-
-    local mainFrame = mainGui:FindFirstChildWhichIsA("Frame")
-    assert(mainFrame, "PANEL UTAMA ONYX TIDAK DITEMUKAN")
-    local rail = mainGui:FindFirstChild("OnyxIconRail")
-    if rail then
-        local function makeShortcut(name, glyph, y)
-            local button = Instance.new("TextButton")
-            button.Name = name
-            button.Size = UDim2.fromOffset(34, 38)
-            button.Position = UDim2.fromOffset(6, y)
-            button.BackgroundColor3 = Color3.fromRGB(22, 42, 55)
-            button.BorderSizePixel = 0
-            button.Text = glyph
-            button.TextColor3 = Color3.fromRGB(105, 235, 205)
-            button.TextSize = 17
-            button.Font = Enum.Font.GothamBold
-            button.ZIndex = 41
-            button.Parent = rail
-            Instance.new("UICorner", button).CornerRadius = UDim.new(0, 8)
-            return button
-        end
-
-        local homeShortcut = makeShortcut("HomeShortcut", "⌂", 145)
-        local farmShortcut = makeShortcut("FarmShortcut", "♧", 191)
-        homeShortcut.Activated:Connect(function()
-            mainFrame.Visible = true
-            scroll.CanvasPosition = Vector2.new(0, 0)
-        end)
-        farmShortcut.Activated:Connect(function()
-            mainFrame.Visible = true
-            local farmHeader = scroll:FindFirstChild("FarmSectionHeader")
-            if farmHeader then
-                scroll.CanvasPosition = Vector2.new(0, farmHeader.Position.Y.Offset)
-            end
-        end)
-    end
-
-    -- FIX SCROLL: hitung batas konten dari posisi absolut SEMUA turunan,
-    -- bukan hanya anak langsung. Ini mencakup kartu/section AUTO GACHA dan PAID
-    -- yang mungkin berada di dalam container bertingkat.
-    scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
-    scroll.ScrollingDirection = Enum.ScrollingDirection.Y
-    scroll.ScrollingEnabled = true
-    local function refreshOnyxCanvas()
-        if not scroll.Parent then return end
-        local bottom = 0
-        local scrollTop = scroll.AbsolutePosition.Y
-        local currentOffset = scroll.CanvasPosition.Y
-        for _, item in ipairs(scroll:GetDescendants()) do
-            if item:IsA("GuiObject") and item.Visible then
-                local itemBottom = item.AbsolutePosition.Y - scrollTop
-                    + currentOffset + item.AbsoluteSize.Y
-                if itemBottom > bottom then bottom = itemBottom end
-            end
-        end
-        bottom = math.max(0, math.ceil(bottom + 24))
-        local current = scroll.CanvasSize.Y.Offset
-        if math.abs(current - bottom) > 1 then
-            scroll.CanvasSize = UDim2.new(0, 0, 0, bottom)
-        end
-    end
-
-    -- Tunggu satu frame agar Roblox menghitung AbsolutePosition/AbsoluteSize.
-    task.spawn(function()
-        task.wait(0.2)
-        refreshOnyxCanvas()
-    end)
-    scroll.DescendantAdded:Connect(function()
-        task.defer(refreshOnyxCanvas)
-    end)
-    scroll:GetPropertyChangedSignal("AbsoluteSize"):Connect(function()
-        task.defer(refreshOnyxCanvas)
-    end)
-
-end)
-
-if not farmOK then
-    diagnosticStatus("FARM INTEGRASI GAGAL: " .. tostring(farmError):sub(1, 140), true)
-else
-    diagnosticStatus("ONYX + FARM TERINTEGRASI", false)
-end
-end
+-- Farm / Feed / Convert integration intentionally removed from Onyx Hub.
 
 local bootOK, bootError = pcall(bootOnyxHub)
 if bootOK then

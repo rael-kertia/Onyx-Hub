@@ -71,6 +71,41 @@ local function hwMove(prompt)
         pathDiag("RUMAH TARGET PROMPT TIDAK DITEMUKAN")
         return false
     end
+    -- V15: buka collision daun pintu RUMAH TARGET sebelum ComputeAsync.
+    -- V14 baru menonaktifkannya setelah karakter macet, padahal path sudah
+    -- dihitung saat pintu masih menjadi penghalang.
+    local onyxHwTargetDoorParts = {}
+    for _, part in ipairs(promptHouse:GetDescendants()) do
+        if part:IsA("BasePart")
+        and string.lower(part.Name) == "door"
+        and part.CanCollide then
+            onyxHwTargetDoorParts[part] = true
+            part.CanCollide = false
+        end
+    end
+    local onyxHwDoorsRestored = false
+    local function restoreOnyxHwTargetDoors()
+        if onyxHwDoorsRestored then return end
+        onyxHwDoorsRestored = true
+        for part in pairs(onyxHwTargetDoorParts) do
+            if part and part.Parent then
+                pcall(function() part.CanCollide = true end)
+            end
+        end
+        pathDiag("COLLISION PINTU TARGET DIPULIHKAN")
+    end
+    if next(onyxHwTargetDoorParts) then
+        local count = 0
+        for _ in pairs(onyxHwTargetDoorParts) do count = count + 1 end
+        pathDiag("PINTU TARGET DIBUKA SEBELUM PATH COMPUTE: " .. tostring(count) .. " PART")
+        -- Beri physics satu frame untuk menerapkan perubahan collision.
+        task.wait(0.25)
+        -- Safety restore bila proses berhenti di tengah jalan.
+        task.delay(20, restoreOnyxHwTargetDoors)
+    else
+        pathDiag("TIDAK ADA DAUN PINTU COLLIDABLE DI RUMAH TARGET")
+    end
+
     local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
     local lastPathError = "BELUM ADA KANDIDAT"
 
@@ -443,11 +478,13 @@ local function hwMove(prompt)
     end
 
     if not reached then
+        restoreOnyxHwTargetDoors()
         pathDiag("GAGAL SETELAH 3 PERCOBAAN PADA PROMPT YANG SAMA; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end
 
+    restoreOnyxHwTargetDoors()
     hwForceStand()
     return alive() and homeworkEnabled
 end

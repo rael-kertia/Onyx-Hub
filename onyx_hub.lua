@@ -67,7 +67,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-core-refresh-20261126v"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-core-refresh-20261126w"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -1086,7 +1086,7 @@ source = onyxReplaceBetween(
     source,
     "local function hwMove(prompt)",
     "local function hwUse(prompt)",
-    [========[
+    [=[
 local function hwMove(prompt)
     if not alive() or not homeworkEnabled then return false end
 
@@ -1302,7 +1302,7 @@ local function hwMove(prompt)
     setStatus("PATHFINDING: GAGAL MENCAPAI AREA PROMPT")
     return false
 end
-]========]
+]=]
 )
 
 -- HOMEWORK DETECTION RESTORE:

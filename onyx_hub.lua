@@ -1269,6 +1269,94 @@ end
 )
 
 
+-- HOMEWORK DISPOSAL: scan nested zones and both ownership attributes.
+source = onyxReplaceBetween(
+    source,
+    "local function hwDispose(house)",
+    "local function hwGet(house, mode)",
+    [=[
+local function hwDispose(house)
+    if not hwCarrying() then return true end
+    if not hwRoot() then return false end
+
+    local best, bestDistance
+    local seenPrompts = {}
+    local folder = W:FindFirstChild("KosanSpawned")
+
+    local function scanRoot(root)
+        if not root then return end
+        for _, prompt in ipairs(root:GetDescendants()) do
+            if not alive() or not homeworkEnabled then return end
+
+            if prompt:IsA("ProximityPrompt")
+            and prompt.Name == "BuangPrompt"
+            and prompt.ActionText == "Buang"
+            and prompt.Enabled
+            and not seenPrompts[prompt] then
+                seenPrompts[prompt] = true
+                local part = hwPart(prompt)
+                local currentRoot = hwRoot()
+                if part and currentRoot then
+                    local distance = (currentRoot.Position - part.Position).Magnitude
+                    if not bestDistance or distance < bestDistance then
+                        best = prompt
+                        bestDistance = distance
+                    end
+                end
+            end
+        end
+    end
+
+    -- Tempat sampah di rumah milik pemain.
+    if folder then
+        for _, ownHouse in ipairs(folder:GetChildren()) do
+            if hwOwnsHouse(ownHouse) then
+                scanRoot(ownHouse)
+            end
+        end
+    end
+
+    -- Zona bisa berada di dalam folder/model; validasi kepemilikan
+    -- lewat PemilikUserId atau OwnerUserId pada zona maupun ancestor-nya.
+    for _, zone in ipairs(W:GetDescendants()) do
+        if zone.Name:match("^ZonaSpawanGedung") then
+            local node = zone
+            local owned = false
+            while node and node ~= W do
+                local ownerId = tonumber(node:GetAttribute("PemilikUserId"))
+                    or tonumber(node:GetAttribute("OwnerUserId"))
+                if ownerId == player.UserId then
+                    owned = true
+                    break
+                end
+                if folder and node.Parent == folder and hwOwnsHouse(node) then
+                    owned = true
+                    break
+                end
+                node = node.Parent
+            end
+            if owned then
+                scanRoot(zone)
+            end
+        end
+    end
+
+    if not best then
+        setStatus("TEMPAT SAMPAH ZONA SENDIRI TIDAK DITEMUKAN")
+        task.wait(1)
+        return false
+    end
+
+    if not hwUse(best) then
+        setStatus("INTERAKSI BUANG GAGAL - COBA LAGI")
+        return false
+    end
+
+    return hwWaitCarry(false)
+end
+]=]
+)
+
 -- HOMEWORK TRASH SCAN: accept both prompt name and ActionText.
 -- This runs after the legacy hwGet patches, so this is the final implementation.
 source = onyxReplaceBetween(

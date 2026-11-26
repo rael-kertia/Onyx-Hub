@@ -354,6 +354,41 @@ local function hwMove(prompt)
             blockedAt = index
         end)
 
+        local function captureActualStuck(index, waypoint, rootPart, lastPos, lastProgressAt, recovery)
+            local nearby = {}
+            local center = rootPart.Position
+            for _, part in ipairs(workspace:GetPartBoundsInRadius(center, 8)) do
+                if part:IsA("BasePart") and part.CanCollide and not part:IsDescendantOf(character) then
+                    nearby[#nearby + 1] = {
+                        distance = (part.Position - center).Magnitude,
+                        name = part.Name,
+                        path = part:GetFullName(),
+                        position = tostring(part.Position),
+                        size = tostring(part.Size)
+                    }
+                end
+            end
+            table.sort(nearby, function(a, b) return a.distance < b.distance end)
+            while #nearby > 15 do table.remove(nearby) end
+            local env = getgenv()
+            if type(env.ONYX_HW_CAPTURE_STUCK_DIAG) == "function" then
+                pcall(env.ONYX_HW_CAPTURE_STUCK_DIAG, {
+                    house = promptHouse:GetFullName(),
+                    prompt = prompt:GetFullName() .. " | " .. tostring(prompt.ActionText),
+                    waypoint = tostring(index) .. "/" .. tostring(#waypoints),
+                    root = tostring(rootPart.Position),
+                    target = tostring(waypoint.Position),
+                    distance = string.format("%.2f", (rootPart.Position - waypoint.Position).Magnitude),
+                    stuckSeconds = string.format("%.2f", os.clock() - lastProgressAt),
+                    lastPosition = tostring(lastPos),
+                    velocity = tostring(rootPart.AssemblyLinearVelocity),
+                    humanoidState = tostring(humanoid:GetState()),
+                    recovery = recovery,
+                    nearby = nearby
+                })
+            end
+        end
+
         local playerScripts = player:FindFirstChild("PlayerScripts")
         local controls
         pcall(function()
@@ -468,6 +503,8 @@ local function hwMove(prompt)
                     -- Tunggu ayunan pintu selesai, lalu coba waypoint yang sama sekali lagi
                     -- sebelum membatalkan rute dan melakukan replan.
                     if not jumpRecoveryUsed then
+                        captureActualStuck(index, waypoint, r, lastPosition, lastProgressAt,
+                            "SEBELUM JUMP RECOVERY")
                         -- Coba lewati bibir tangga/halangan rendah sebelum recovery pintu.
                         jumpRecoveryUsed = true
                         pathDiag("WAYPOINT MACET: COBA LOMPAT RECOVERY")
@@ -662,78 +699,43 @@ hwMove = function(prompt)
     return ok and result or false
 end
 
-task.spawn(function()
-    local reportedForEnable = false
-    while alive() do
-        if homeworkEnabled and not reportedForEnable then
-            task.wait(7)
-            if not alive() then break end
-            if homeworkEnabled then
-                local lines = {}
-                local function add(k, v)
-                    lines[#lines + 1] = k .. "=" .. tostring(v)
-                end
-                local folder = W:FindFirstChild("KosanSpawned")
-                local houses = folder and folder:GetChildren() or {}
-                local ownedCount, activeOwnedCount, inactiveOwnedCount = 0, 0, 0
-                local promptCount, enabledCount = 0, 0
-                add("HOMEWORK", homeworkEnabled)
-                add("PLAYER_USER_ID", player.UserId)
-                add("ROOT", hwRoot() and tostring(hwRoot().Position) or "NIL")
-                add("KOSANSPAWNED", folder and "ADA" or "NIL")
-                add("JUMLAH_INSTANCE_TOTAL", #houses)
-                for _, house in ipairs(houses) do
-                    local owner = house:GetAttribute("OwnerUserId")
-                    local isOwned = hwOwnsHouse(house)
-                    local state = house:GetAttribute("KosanState")
-                    local isActiveOwned = isOwned and state == "Disewa"
-                    if isOwned then ownedCount = ownedCount + 1 end
-                    if isActiveOwned then
-                        activeOwnedCount = activeOwnedCount + 1
-                        local total, enabled = 0, 0
-                        for _, obj in ipairs(house:GetDescendants()) do
-                            if obj:IsA("ProximityPrompt") and obj.ActionText == "Bersihkan" then
-                                total = total + 1
-                                promptCount = promptCount + 1
-                                if obj.Enabled then
-                                    enabled = enabled + 1
-                                    enabledCount = enabledCount + 1
-                                end
-                            end
-                        end
-                        add("RUMAH_AKTIF_" .. house.Name,
-                            "KosanState=" .. tostring(state)
-                            .. ", Bersihkan=" .. tostring(enabled) .. "/" .. tostring(total))
-                    elseif isOwned then
-                        inactiveOwnedCount = inactiveOwnedCount + 1
-                    end
-                end
-                add("RUMAH_MILIK_PLAYER_TOTAL_INSTANCE", ownedCount)
-                add("RUMAH_AKTIF_MILIK_PLAYER", activeOwnedCount)
-                add("RUMAH_MILIK_PLAYER_TIDAK_DISewa", inactiveOwnedCount)
-                add("PROMPT_BERSIHKAN_AKTIF_TOTAL", enabledCount)
-                add("PROMPT_BERSIHKAN_SEMUA_RUMAH_AKTIF", promptCount)
-                add("FIND_HOUSE_CALLS", onyxHwDiag.findCalls)
-                add("LAST_STAGE", onyxHwDiag.lastStage)
-                add("LAST_HOUSE", onyxHwDiag.lastHouse or "BELUM ADA")
-                add("MOVE_CALLS", onyxHwDiag.moveCalls)
-                add("LAST_MOVE", onyxHwDiag.lastMove)
-                add("LAST_MOVE_RESULT", onyxHwDiag.lastMoveResult)
-                add("PATH_DIAGNOSTIC", (function() local ok, value = pcall(function() return getgenv().ONYX_HW_PATH_DIAG end); return ok and tostring(value) or "UNAVAILABLE" end)())
-                add("CARRYING_TRASH", hwCarrying() ~= nil)
-                local report = "ONYX HOMEWORK DIAGNOSTIC\n" .. table.concat(lines, "\n")
-                pcall(function()
-                    if typeof(setclipboard) == "function" then setclipboard(report) end
-                end)
-                pcall(function() warn(report) end)
-            end
-            reportedForEnable = true
-        elseif not homeworkEnabled then
-            reportedForEnable = false
-        end
-        task.wait(0.5)
+-- Diagnostik sekarang hanya dibuat ketika karakter benar-benar tidak bergerak
+-- selama ambang stuck pada waypoint, bukan saat GUI muncul / timer 7 detik.
+getgenv().ONYX_HW_CAPTURE_STUCK_DIAG = function(data)
+    local lines = {
+        "ONYX HOMEWORK STUCK DIAGNOSTIC V2",
+        "TRIGGER=KARAKTER TIDAK ADA PROGRESS SAAT MOVETO",
+        "TIME=" .. tostring(os.clock()),
+        "HOMEWORK=" .. tostring(homeworkEnabled),
+        "PLAYER=" .. tostring(player.Name) .. " / " .. tostring(player.UserId),
+        "HOUSE=" .. tostring(data.house),
+        "PROMPT=" .. tostring(data.prompt),
+        "WAYPOINT=" .. tostring(data.waypoint),
+        "ROOT=" .. tostring(data.root),
+        "TARGET=" .. tostring(data.target),
+        "DISTANCE=" .. tostring(data.distance),
+        "STUCK_SECONDS=" .. tostring(data.stuckSeconds),
+        "LAST_POSITION=" .. tostring(data.lastPosition),
+        "VELOCITY=" .. tostring(data.velocity),
+        "HUMANOID_STATE=" .. tostring(data.humanoidState),
+        "RECOVERY=" .. tostring(data.recovery),
+        "",
+        "=== PART COLLIDABLE TERDEKAT ==="
+    }
+    for i, item in ipairs(data.nearby or {}) do
+        lines[#lines + 1] = string.format(
+            "[%02d] DIST=%.2f NAME=%s PATH=%s POS=%s SIZE=%s",
+            i, item.distance, item.name, item.path, item.position, item.size
+        )
     end
-end)
+    local report = table.concat(lines, "\\n")
+    pcall(function()
+        if typeof(setclipboard) == "function" then setclipboard(report) end
+    end)
+    pcall(function() warn(report) end)
+    getgenv().ONYX_HW_STUCK_LAST_REPORT = report
+end
+
 ]=]
 local diagMarker = "local function homeworkRun()"
 local diagAt = source:find(diagMarker, 1, true)

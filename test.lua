@@ -188,13 +188,49 @@ local function hwMove(prompt)
             Vector3.new(-diagonal, 0, -diagonal)
         }
         local checked = 0
+        -- Proyeksikan titik tujuan ke lantai pada ketinggian yang benar.
+        -- Prompt kotoran bisa berada di atas lantai; memakai Y prompt mentah
+        -- membuat Pathfinding mengejar titik melayang dan berulang kali NoPath.
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {character}
+        rayParams.IgnoreWater = true
+
+        local function floorPosition(x, z, referenceY)
+            local origin = Vector3.new(x, referenceY + 14, z)
+            local hit = workspace:Raycast(origin, Vector3.new(0, -55, 0), rayParams)
+            if not hit then return nil end
+            local rootOffset = humanoid.HipHeight + (r.Size.Y * 0.5)
+            return Vector3.new(x, hit.Position.Y + rootOffset, z)
+        end
+
+        local startGround = workspace:Raycast(
+            r.Position + Vector3.new(0, 2, 0),
+            Vector3.new(0, -12, 0),
+            rayParams
+        )
+        local rootOffset = startGround and (r.Position.Y - startGround.Position.Y)
+            or (humanoid.HipHeight + r.Size.Y * 0.5)
+
         for _, radius in ipairs(radii) do
             for index, direction in ipairs(directions) do
                 if not alive() or not homeworkEnabled then return nil end
-                local candidatePosition = destination + direction * radius
-                if (candidatePosition - destination).Magnitude <= allowedDistance - 1 then
+                local rawCandidate = destination + direction * radius
+                if (rawCandidate - destination).Magnitude <= allowedDistance - 1 then
                     checked = checked + 1
                     pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/24")
+                    local floorCandidate = floorPosition(rawCandidate.X, rawCandidate.Z, destination.Y)
+                    local candidatePosition = floorCandidate
+                        or Vector3.new(rawCandidate.X, destination.Y, rawCandidate.Z)
+                    if floorCandidate then
+                        -- Pertahankan selisih root-ke-lantai karakter, bukan offset
+                        -- avatar default, karena beberapa rig memakai HipHeight khusus.
+                        candidatePosition = Vector3.new(
+                            rawCandidate.X,
+                            floorCandidate.Y - (humanoid.HipHeight + r.Size.Y * 0.5) + rootOffset,
+                            rawCandidate.Z
+                        )
+                    end
                     local candidatePath = makePath(candidatePosition)
                     if candidatePath then
                         pathDiag("TITIK " .. tostring(checked) .. ": SUCCESS")

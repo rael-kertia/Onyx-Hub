@@ -26,6 +26,8 @@ source = onyxHomeworkReplaceBetween(
     "local function hwMove(prompt)",
     "local function hwUse(prompt)",
     [=[
+local onyxHwComputePending = false
+
 local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
@@ -64,8 +66,13 @@ local function hwMove(prompt)
     local lastPathError = "BELUM ADA KANDIDAT"
 
     local function makePath(targetPosition)
+        if onyxHwComputePending then
+            lastPathError = "COMPUTE MASIH BERJALAN DARI PERCOBAAN SEBELUMNYA"
+            return nil
+        end
         r = hwRoot()
         if not r then return nil end
+        local startPosition = r.Position
         local path = pathService:CreatePath({
             AgentRadius = 1.5,
             AgentHeight = 5,
@@ -77,10 +84,12 @@ local function hwMove(prompt)
         local completed = false
         local computed = false
         local computeError = nil
+        onyxHwComputePending = true
         task.spawn(function()
             computed, computeError = pcall(function()
-                path:ComputeAsync(r.Position, targetPosition)
+                path:ComputeAsync(startPosition, targetPosition)
             end)
+            onyxHwComputePending = false
             completed = true
         end)
 
@@ -94,11 +103,12 @@ local function hwMove(prompt)
         end
 
         if not completed then
-            lastPathError = "COMPUTE TIMEOUT 3S"
+            lastPathError = "COMPUTE TIMEOUT 3S - PROSES LAMA DIBIARKAN SELESAI"
             return nil
         end
         if not computed or path.Status ~= Enum.PathStatus.Success then
-            lastPathError = "STATUS=" .. tostring(path.Status) .. " ERROR=" .. tostring(computeError)
+            lastPathError = "NO PATH / COMPUTE ERROR: STATUS=" .. tostring(path.Status)
+                .. " ERROR=" .. tostring(computeError)
             return nil
         end
         local waypoints = path:GetWaypoints()
@@ -136,8 +146,15 @@ local function hwMove(prompt)
                     pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/8")
                     local candidatePath = makePath(candidatePosition)
                     if candidatePath then
+                        pathDiag("TITIK " .. tostring(checked) .. ": SUCCESS")
                         pathDiag("TITIK PENDEKATAN VALID " .. tostring(checked) .. "/8")
                         return candidatePath
+                    end
+                    pathDiag("TITIK " .. tostring(checked) .. ": " .. tostring(lastPathError))
+                    if lastPathError:find("TIMEOUT", 1, true)
+                    or lastPathError:find("MASIH BERJALAN", 1, true) then
+                        pathDiag("PENCARIAN DIHENTIKAN AGAR COMPUTE TIDAK MENUMPUK")
+                        return nil
                     end
                 end
             end
@@ -283,9 +300,9 @@ local function hwMove(prompt)
 
     --    -- Cari rute ke titik pendekatan yang dapat dicapai, lalu jalankan.
     local reached = false
-    for attempt = 1, 6 do
+    for attempt = 1, 1 do
         if not alive() or not homeworkEnabled then return false end
-        pathDiag("MENCARI TITIK PENDEKATAN - PERCOBAAN " .. tostring(attempt))
+        pathDiag("MENCARI TITIK PENDEKATAN - SATU PUTARAN DIAGNOSTIK")
         local route = findApproachPath()
         if route and followPath(route) then
             reached = true
@@ -298,7 +315,7 @@ local function hwMove(prompt)
     end
 
     if not reached then
-        pathDiag("APPROACH SEARCH FAILED AFTER 6 ATTEMPTS; LAST_ERROR=" .. tostring(lastPathError))
+        pathDiag("APPROACH SEARCH FAILED AFTER 1 PASS; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end

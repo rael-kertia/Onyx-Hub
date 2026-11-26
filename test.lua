@@ -25,7 +25,11 @@ source = onyxHomeworkReplaceBetween(
     "local function hwUse(prompt)",
     [=[
 local function hwMove(prompt)
-    if not alive() or not homeworkEnabled then return false end
+    local function pathDiag(value)
+        pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
+    end
+    pathDiag("HW MOVE START")
+    if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
     local q = hwPart(prompt)
@@ -66,16 +70,18 @@ local function hwMove(prompt)
             WaypointSpacing = 4
         })
 
-        local computed = pcall(function()
+        local computed, computeError = pcall(function()
             path:ComputeAsync(r.Position, destination)
         end)
-
+        pathDiag("COMPUTE=" .. tostring(computed) .. " STATUS=" .. tostring(path.Status) .. " ERROR=" .. tostring(computeError))
         if not computed or path.Status ~= Enum.PathStatus.Success then
+            pathDiag("PATH FAILED: " .. tostring(path.Status) .. " / " .. tostring(computeError))
             return false
         end
 
         local waypoints = path:GetWaypoints()
-        if #waypoints == 0 then return false end
+        pathDiag("PATH OK; WAYPOINTS=" .. tostring(#waypoints))
+        if #waypoints == 0 then pathDiag("ZERO WAYPOINTS"); return false end
 
         local blockedAt = nil
         local blockedConnection = path.Blocked:Connect(function(index)
@@ -89,6 +95,7 @@ local function hwMove(prompt)
             end
 
             if blockedAt and blockedAt <= index then
+                pathDiag("BLOCKED AT WAYPOINT " .. tostring(blockedAt) .. "/" .. tostring(index))
                 blockedConnection:Disconnect()
                 return false
             end
@@ -103,6 +110,7 @@ local function hwMove(prompt)
                 humanoid.Jump = true
             end
 
+            pathDiag("MOVETO WAYPOINT " .. tostring(index) .. "/" .. tostring(#waypoints))
             humanoid:MoveTo(waypoint.Position)
             local distance = (r.Position - waypoint.Position).Magnitude
             local deadline = os.clock() + math.max(4, distance / 8 + 2)
@@ -132,7 +140,9 @@ local function hwMove(prompt)
             end
 
             r = hwRoot()
-            if not r or (r.Position - waypoint.Position).Magnitude > 4 then
+            local remaining = r and (r.Position - waypoint.Position).Magnitude or -1
+            if not r or remaining > 4 then
+                pathDiag("WAYPOINT TIMEOUT " .. tostring(index) .. "/" .. tostring(#waypoints) .. " DIST=" .. tostring(remaining))
                 blockedConnection:Disconnect()
                 return false
             end
@@ -140,9 +150,10 @@ local function hwMove(prompt)
 
         blockedConnection:Disconnect()
         r = hwRoot()
-        return r ~= nil
-            and (r.Position - destination).Magnitude
-                <= math.max(prompt.MaxActivationDistance or 10, 8) + 2
+        local finalDistance = r and (r.Position - destination).Magnitude or -1
+        local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
+        pathDiag("PATH END DIST=" .. tostring(finalDistance) .. " ALLOWED=" .. tostring(allowedDistance))
+        return r ~= nil and finalDistance <= allowedDistance
     end
 
     -- Hitung ulang satu kali jika jalur pertama terhalang.
@@ -157,6 +168,7 @@ local function hwMove(prompt)
     end
 
     if not reached then
+        pathDiag("FAILED AFTER 2 ATTEMPTS; LAST=" .. tostring(getgenv().ONYX_HW_PATH_DIAG))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end
@@ -248,6 +260,7 @@ task.spawn(function()
                 add("MOVE_CALLS", onyxHwDiag.moveCalls)
                 add("LAST_MOVE", onyxHwDiag.lastMove)
                 add("LAST_MOVE_RESULT", onyxHwDiag.lastMoveResult)
+                add("PATH_DIAGNOSTIC", (function() local ok, value = pcall(function() return getgenv().ONYX_HW_PATH_DIAG end); return ok and tostring(value) or "UNAVAILABLE" end)())
                 add("CARRYING_TRASH", hwCarrying() ~= nil)
                 local report = "ONYX HOMEWORK DIAGNOSTIC\n" .. table.concat(lines, "\n")
                 pcall(function()

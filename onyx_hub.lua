@@ -975,25 +975,10 @@ end
 
 
 
--- AUTO CLEAN BUTTON: nama eksplisit dan visibilitas dijamin.
-local oldCleanLine = 'local cleanButton = makeToggle("CleanButton", "CLEANER", 12, 58, 88)'
-local newCleanLine = 'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)'
-if source:find(oldCleanLine, 1, true) then
-    source = source:gsub(oldCleanLine, newCleanLine, 1)
-end
-source = source:gsub(
-    'paintToggle(cleanButton, "CLEANER", enabled)',
-    'paintToggle(cleanButton, "AUTO CLEAN", enabled)',
-    1
-)
-source = source:gsub(
-    'local cleanButton = makeToggle%("CleanButton", "AUTO CLEAN", 12, 58, 88%)',
-    'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)\ncleanButton.Visible = true\ncleanButton.Active = true\ncleanButton.ZIndex = 20',
-    1
-)
-assert(source:find('local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)', 1, true),
+-- AUTO CLEAN BUTTON: GUI core saat ini memakai makeButton multiline.
+-- cleanButton dibuat di guiCode; jangan mencari signature makeToggle lama.
+assert(source:find('local cleanButton = makeButton(', 1, true),
     "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
-
 
 
 -- HOMEWORK: RESOLVE PROMPT PART, INCLUDING ATTACHMENT PARENTS.

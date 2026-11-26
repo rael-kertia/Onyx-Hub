@@ -1303,7 +1303,6 @@ local function hwMove(prompt)
     return false
 end
 ]=]
-]=]
 )
 
 -- HOMEWORK DETECTION RESTORE:

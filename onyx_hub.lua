@@ -742,6 +742,17 @@ do
     end
     contentScroll.CanvasSize = UDim2.new(0, 0, 0, maxBottom)
 
+    -- CLEAN button berada di Y=22 pada core lama, sehingga tertinggal
+    -- di belakang header. Pindahkan ke area scroll agar tetap terlihat.
+    if cleanButton then
+        cleanButton.Parent = contentScroll
+        cleanButton.Position = UDim2.fromOffset(12, 55)
+        cleanButton.Visible = true
+    end
+    -- Farm memang tidak dipakai lagi; sembunyikan tombol legacy-nya.
+    if farmButton then
+        farmButton.Visible = false
+    end
 
     -- ONYX DASHBOARD REDESIGN: new visual hierarchy, hero card, feature cards.
     frame.BackgroundColor3 = Color3.fromRGB(9, 14, 25)
@@ -1042,10 +1053,34 @@ local function hwMove(prompt)
             humanoid.Jump = true
         end
 
+        local finished = false
+        local reached = false
+        local moveConnection
+        moveConnection = humanoid.MoveToFinished:Connect(function(success)
+            reached = success
+            finished = true
+            if moveConnection then
+                moveConnection:Disconnect()
+                moveConnection = nil
+            end
+        end)
+
         humanoid:MoveTo(waypoint.Position)
-        local reached = humanoid.MoveToFinished:Wait()
-        if not reached then
-            setStatus("PATHFINDING: TERHAMBAT DI WAYPOINT " .. tostring(index))
+        local deadline = os.clock() + math.max(4, (root.Position - waypoint.Position).Magnitude / math.max(humanoid.WalkSpeed, 8) + 3)
+        while not finished and os.clock() < deadline do
+            if not alive() or not homeworkEnabled then
+                if moveConnection then moveConnection:Disconnect() end
+                return false
+            end
+            task.wait(0.1)
+        end
+        if moveConnection then
+            moveConnection:Disconnect()
+            moveConnection = nil
+        end
+
+        if not finished or not reached then
+            setStatus("PATHFINDING: WAYPOINT " .. tostring(index) .. " GAGAL / TIMEOUT")
             return false
         end
     end

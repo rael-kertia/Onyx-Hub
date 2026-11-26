@@ -209,6 +209,7 @@ local function hwMove(prompt)
             local lastPosition = r.Position
             local lastProgressAt = os.clock()
             local lastMoveCommand = os.clock()
+            local doorWaitUsed = false
 
             while os.clock() < deadline do
                 if not alive() or not homeworkEnabled then
@@ -263,14 +264,41 @@ local function hwMove(prompt)
                     lastPosition = r.Position
                     lastProgressAt = os.clock()
                 elseif os.clock() - lastProgressAt >= 1.8 then
-                    -- Bisa terjadi ketika daun pintu sedang berayun/menahan karakter.
-                    -- Beri waktu singkat, lalu minta rute baru dari posisi aktual.
-                    humanoid:MoveTo(r.Position)
-                    pathDiag("TERHALANG / KEMUNGKINAN PINTU - REPLAN WAYPOINT "
-                        .. tostring(index) .. "/" .. tostring(#waypoints))
-                    task.wait(0.65)
-                    blockedConnection:Disconnect()
-                    return false
+                    -- Daun pintu dapat mendorong karakter saat melewati ambang.
+                    -- Tunggu ayunan pintu selesai, lalu coba waypoint yang sama sekali lagi
+                    -- sebelum membatalkan rute dan melakukan replan.
+                    if not doorWaitUsed then
+                        doorWaitUsed = true
+                        humanoid:MoveTo(r.Position)
+                        pathDiag("PINTU MENDORONG KARAKTER - JEDA 1.5S DI WAYPOINT "
+                            .. tostring(index) .. "/" .. tostring(#waypoints))
+                        task.wait(1.5)
+                        if not alive() or not homeworkEnabled then
+                            blockedConnection:Disconnect()
+                            return false
+                        end
+                        r = hwRoot()
+                        if not r then
+                            blockedConnection:Disconnect()
+                            return false
+                        end
+                        if (r.Position - waypoint.Position).Magnitude <= 3 then
+                            break
+                        end
+                        lastPosition = r.Position
+                        lastProgressAt = os.clock()
+                        lastMoveCommand = os.clock()
+                        deadline = deadline + 1.5
+                        humanoid:MoveTo(waypoint.Position)
+                        pathDiag("PINTU SELESAI DITUNGGU - COBA WAYPOINT YANG SAMA")
+                    else
+                        humanoid:MoveTo(r.Position)
+                        pathDiag("PINTU MASIH MENGHALANG - REPLAN WAYPOINT "
+                            .. tostring(index) .. "/" .. tostring(#waypoints))
+                        task.wait(0.65)
+                        blockedConnection:Disconnect()
+                        return false
+                    end
                 end
 
                 if os.clock() - lastMoveCommand >= 0.8 then

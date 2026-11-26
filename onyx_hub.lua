@@ -1269,6 +1269,55 @@ end
 )
 
 
+-- HOMEWORK TRASH SCAN: accept both prompt name and ActionText.
+-- This runs after the legacy hwGet patches, so this is the final implementation.
+source = onyxReplaceBetween(
+    source,
+    "local function hwGet(house, mode)",
+    "local function hwFindHouse()",
+    [=[
+local function hwGet(house, mode)
+    local result = {}
+    local seen = {}
+    if not house then return result end
+
+    for _, object in ipairs(house:GetDescendants()) do
+        if (mode == 1 or mode == 3)
+        and object:IsA("ProximityPrompt")
+        and object.ActionText == "Bersihkan"
+        and (mode == 3 or object.Enabled)
+        and not seen[object] then
+            seen[object] = true
+            table.insert(result, object)
+
+        elseif (mode == 2 or mode == 4)
+        and object.Name == "TrashBag"
+        and (object:IsA("BasePart")
+            or object:IsA("Model")
+            or object:IsA("Folder")) then
+
+            for _, prompt in ipairs(object:GetDescendants()) do
+                if prompt:IsA("ProximityPrompt") then
+                    local action = (prompt.ActionText or ""):lower()
+                    local isTake = prompt.Name == "AmbilPrompt"
+                        or action:find("ambil", 1, true) ~= nil
+
+                    if isTake
+                    and (mode == 4 or prompt.Enabled)
+                    and not seen[prompt] then
+                        seen[prompt] = true
+                        table.insert(result, prompt)
+                    end
+                end
+            end
+        end
+    end
+
+    return result
+end
+]=]
+)
+
 -- Farm, Feed, and Convert controls remain absent; Auto Clean stays enabled in GUI.
 
 

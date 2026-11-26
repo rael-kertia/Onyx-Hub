@@ -963,8 +963,7 @@ end
 ]====]
 
 
--- HOMEWORK MOVEMENT: RESTORE THE LAST KNOWN-COMPILING MOVEMENT BLOCK
--- Pathfinding is temporarily isolated until the core compiles cleanly.
+-- HOMEWORK MOVEMENT: PATHFINDING (NO TELEPORT)
 source = onyxReplaceBetween(
     source,
     "local function hwMove(prompt)",
@@ -973,24 +972,68 @@ source = onyxReplaceBetween(
 local function hwMove(prompt)
     if not alive() or not homeworkEnabled then return false end
 
-    local r = hwRoot()
-    local q = hwPart(prompt)
-    if not r or not q then return false end
+    local PathfindingService = game:GetService("PathfindingService")
+    local character = game:GetService("Players").LocalPlayer.Character
+    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+    local root = hwRoot()
+    local target = hwPart(prompt)
+    if not humanoid or humanoid.Health <= 0 or not root or not target then
+        return false
+    end
 
     hwForceStand()
-    r = hwRoot()
-    if not r then return false end
+    local goal = target.Position + Vector3.new(0, 2, 0)
 
-    r.CFrame = CFrame.new(q.Position + Vector3.new(0, 3.5, 0))
-    r.AssemblyLinearVelocity = Vector3.zero
-    r.AssemblyAngularVelocity = Vector3.zero
+    -- Recompute once if the first route becomes blocked or cannot be followed.
+    for attempt = 1, 2 do
+        if not alive() or not homeworkEnabled then return false end
+        root = hwRoot()
+        if not root then return false end
 
-    task.wait(0.15)
-    hwForceStand()
-    task.wait(0.15)
-    hwForceStand()
+        local path = PathfindingService:CreatePath({
+            AgentRadius = 2,
+            AgentHeight = 5,
+            AgentCanJump = true,
+            AgentCanClimb = true,
+            WaypointSpacing = 4
+        })
 
-    return alive() and homeworkEnabled
+        local computed = pcall(function()
+            path:ComputeAsync(root.Position, goal)
+        end)
+
+        if computed and path.Status == Enum.PathStatus.Success then
+            local waypoints = path:GetWaypoints()
+            local routeOK = true
+
+            for _, waypoint in ipairs(waypoints) do
+                if not alive() or not homeworkEnabled then return false end
+
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+
+                humanoid:MoveTo(waypoint.Position)
+                local reached = humanoid.MoveToFinished:Wait()
+                if not reached then
+                    routeOK = false
+                    break
+                end
+            end
+
+            if routeOK then
+                root = hwRoot()
+                return root ~= nil
+                    and (root.Position - goal).Magnitude <= 6
+                    and alive()
+                    and homeworkEnabled
+            end
+        end
+
+        task.wait(0.2)
+    end
+
+    return false
 end
 ]=]
 )

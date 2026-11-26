@@ -173,12 +173,19 @@ local function hwMove(prompt)
     -- lalu 4 arah pada radius kedua. Berhenti pada jalur valid pertama.
     -- Ini menghindari puluhan ComputeAsync sebelum karakter mulai bergerak.
     local function findApproachPath()
-        local radii = {3, 6}
+        -- 8 arah mengelilingi prompt, dicoba dari radius dekat ke luar.
+        -- Titik diagonal membantu saat akses pintu tidak sejajar sumbu rumah.
+        local radii = {3, 6, 9}
+        local diagonal = math.sqrt(0.5)
         local directions = {
             Vector3.new(1, 0, 0),
             Vector3.new(-1, 0, 0),
             Vector3.new(0, 0, 1),
-            Vector3.new(0, 0, -1)
+            Vector3.new(0, 0, -1),
+            Vector3.new(diagonal, 0, diagonal),
+            Vector3.new(diagonal, 0, -diagonal),
+            Vector3.new(-diagonal, 0, diagonal),
+            Vector3.new(-diagonal, 0, -diagonal)
         }
         local checked = 0
         for _, radius in ipairs(radii) do
@@ -187,11 +194,11 @@ local function hwMove(prompt)
                 local candidatePosition = destination + direction * radius
                 if (candidatePosition - destination).Magnitude <= allowedDistance - 1 then
                     checked = checked + 1
-                    pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/8")
+                    pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/24")
                     local candidatePath = makePath(candidatePosition)
                     if candidatePath then
                         pathDiag("TITIK " .. tostring(checked) .. ": SUCCESS")
-                        pathDiag("TITIK PENDEKATAN VALID " .. tostring(checked) .. "/8")
+                        pathDiag("TITIK PENDEKATAN VALID " .. tostring(checked) .. "/24")
                         return candidatePath
                     end
                     pathDiag("TITIK " .. tostring(checked) .. ": " .. tostring(lastPathError))
@@ -203,7 +210,7 @@ local function hwMove(prompt)
                 end
             end
         end
-        pathDiag("8 TITIK PENDEKATAN GAGAL")
+        pathDiag("24 TITIK PENDEKATAN GAGAL")
         return nil
     end
 
@@ -503,20 +510,25 @@ local onyxHwDiag = {
     lastMoveResult = "BELUM ADA"
 }
 
-local onyxHwPinnedHouse = nil
+-- Rumah yang gagal tidak dikunci. Beri cooldown sementara agar
+-- hwFindHouse memilih rumah kotor lain; setelah 20 detik boleh dicoba lagi.
+local onyxHwFailedHouseUntil = setmetatable({}, {__mode = "k"})
+local hwGetOriginal = hwGet
+hwGet = function(house, mode)
+    local items = hwGetOriginal(house, mode)
+    if mode ~= 1 or not house then return items end
+    local untilTime = onyxHwFailedHouseUntil[house]
+    if untilTime and os.clock() < untilTime then
+        return {}
+    end
+    if untilTime then onyxHwFailedHouseUntil[house] = nil end
+    return items
+end
+
 local hwFindHouseOriginal = hwFindHouse
 hwFindHouse = function(...)
     onyxHwDiag.findCalls = onyxHwDiag.findCalls + 1
     onyxHwDiag.lastStage = "MENCARI RUMAH"
-    if onyxHwPinnedHouse then
-        if onyxHwPinnedHouse.Parent == W:FindFirstChild("KosanSpawned")
-        and #hwGet(onyxHwPinnedHouse, 1) > 0 then
-            onyxHwDiag.lastHouse = onyxHwPinnedHouse:GetFullName() .. " (PINNED)"
-            onyxHwDiag.lastStage = "MENGULANG RUMAH YANG SAMA"
-            return onyxHwPinnedHouse
-        end
-        onyxHwPinnedHouse = nil
-    end
     local result = hwFindHouseOriginal(...)
     onyxHwDiag.lastHouse = result and result:GetFullName() or "NIL"
     onyxHwDiag.lastStage = result and "RUMAH DITEMUKAN" or "RUMAH TIDAK DITEMUKAN"
@@ -530,15 +542,19 @@ hwMove = function(prompt)
     onyxHwDiag.lastMove = prompt and (prompt:GetFullName() .. " | " .. tostring(prompt.ActionText)) or "PROMPT NIL"
     local ok, result = pcall(hwMoveOriginal, prompt)
     onyxHwDiag.lastMoveResult = ok and tostring(result) or ("ERROR: " .. tostring(result))
-    if prompt and prompt.ActionText == "Bersihkan" and (not ok or not result) then
+    if prompt and prompt.ActionText == "Bersihkan" then
         local folder = W:FindFirstChild("KosanSpawned")
         local house = prompt
         while house and house.Parent ~= folder do
             house = house.Parent
         end
         if house and house.Parent == folder then
-            onyxHwPinnedHouse = house
-            onyxHwDiag.lastHouse = house:GetFullName() .. " (PINNED AFTER PATH FAILURE)"
+            if not ok or not result then
+                onyxHwFailedHouseUntil[house] = os.clock() + 20
+                onyxHwDiag.lastHouse = house:GetFullName() .. " (COOLDOWN 20S - PINDAH TARGET)"
+            else
+                onyxHwFailedHouseUntil[house] = nil
+            end
         end
     end
     onyxHwDiag.lastStage = "HW MOVE SELESAI"

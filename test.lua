@@ -1,7 +1,7 @@
 -- ONYX HUB | MAIN LOADER
 -- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-fix14-recompile-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-2"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -172,8 +172,11 @@ end
 ]==]
 assert(response:find(onyxHomeworkPathfindingMarker, 1, true),
     "ONYX TEST: marker loader pathfinding tidak ditemukan")
-response = response:gsub(onyxHomeworkPathfindingMarker,
-    function() return onyxHomeworkPathfindingPatch .. "\n" .. onyxHomeworkPathfindingMarker end, 1)
+local onyxHomeworkPathfindingAt = response:find(onyxHomeworkPathfindingMarker, 1, true)
+assert(onyxHomeworkPathfindingAt, "ONYX TEST: marker pathfinding tidak ditemukan (plain search)")
+response = response:sub(1, onyxHomeworkPathfindingAt - 1)
+    .. onyxHomeworkPathfindingPatch .. "\\n"
+    .. response:sub(onyxHomeworkPathfindingAt)
 
 local chunk, compileError = loadstring(response)
 assert(type(chunk) == "function", "ONYX HUB: kompilasi gagal: " .. tostring(compileError))

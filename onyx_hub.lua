@@ -954,7 +954,8 @@ end
 ]====]
 
 
--- HOMEWORK PATHFINDING: WALK TO REACHABLE APPROACH POINTS
+-- HOMEWORK MOVEMENT: RESTORE THE LAST KNOWN-COMPILING MOVEMENT BLOCK
+-- Pathfinding is temporarily isolated until the core compiles cleanly.
 source = onyxReplaceBetween(
     source,
     "local function hwMove(prompt)",
@@ -962,156 +963,25 @@ source = onyxReplaceBetween(
     [=[
 local function hwMove(prompt)
     if not alive() or not homeworkEnabled then return false end
-    if not prompt or not prompt.Parent then return false end
 
-    local character = player.Character
-    local root = hwRoot()
-    local part = hwPart(prompt)
-    local humanoid = character and character:FindFirstChildOfClass("Humanoid")
-    if not character or not root or not part or not humanoid then return false end
+    local r = hwRoot()
+    local q = hwPart(prompt)
+    if not r or not q then return false end
 
     hwForceStand()
-    root = hwRoot()
-    if not root then return false end
+    r = hwRoot()
+    if not r then return false end
 
-    local PathfindingService = game:GetService("PathfindingService")
-    local rayParams = RaycastParams.new()
-    rayParams.FilterType = Enum.RaycastFilterType.Exclude
-    rayParams.FilterDescendantsInstances = {character, part}
-    rayParams.IgnoreWater = true
+    r.CFrame = CFrame.new(q.Position + Vector3.new(0, 3.5, 0))
+    r.AssemblyLinearVelocity = Vector3.zero
+    r.AssemblyAngularVelocity = Vector3.zero
 
-    local directions = {
-        Vector3.new(1, 0, 0),
-        Vector3.new(-1, 0, 0),
-        Vector3.new(0, 0, 1),
-        Vector3.new(0, 0, -1),
-        Vector3.new(0.707, 0, 0.707),
-        Vector3.new(-0.707, 0, 0.707),
-        Vector3.new(0.707, 0, -0.707),
-        Vector3.new(-0.707, 0, -0.707)
-    }
+    task.wait(0.15)
+    hwForceStand()
+    task.wait(0.15)
+    hwForceStand()
 
-    local bestPath, bestTarget
-    local bestDistance = math.huge
-    local rootHeight = humanoid.HipHeight + root.Size.Y * 0.5 + 0.15
-
-    -- Cari titik berdiri di sekitar prompt. Raycast memastikan target berada
-    -- di atas permukaan lantai, bukan di dalam tembok atau objek kotoran.
-    for _, radius in ipairs({3.25, 4.5}) do
-        for _, direction in ipairs(directions) do
-            if not alive() or not homeworkEnabled then return false end
-
-            local x = part.Position.X + direction.X * radius
-            local z = part.Position.Z + direction.Z * radius
-            local rayOrigin = Vector3.new(x, part.Position.Y + 7, z)
-            local hit = workspace:Raycast(
-                rayOrigin,
-                Vector3.new(0, -18, 0),
-                rayParams
-            )
-
-            if hit and hit.Normal.Y > 0.55 then
-                local target = hit.Position + Vector3.new(0, rootHeight, 0)
-                local verticalDifference = math.abs(target.Y - root.Position.Y)
-
-                -- Batasi target yang jelas berada di level berbeda/di balik
-                -- struktur; tangga tetap dapat dilalui karena beda lantai ~16.
-                if verticalDifference <= 24 then
-                    local path = PathfindingService:CreatePath({
-                        AgentRadius = 2,
-                        AgentHeight = 5,
-                        AgentCanJump = true,
-                        WaypointSpacing = 3
-                    })
-
-                    local computed = pcall(function()
-                        path:ComputeAsync(root.Position, target)
-                    end)
-
-                    if computed and path.Status == Enum.PathStatus.Success then
-                        local distance = 0
-                        local waypoints = path:GetWaypoints()
-                        for index = 2, #waypoints do
-                            distance += (waypoints[index].Position
-                                - waypoints[index - 1].Position).Magnitude
-                        end
-
-                        if distance < bestDistance then
-                            bestDistance = distance
-                            bestPath = path
-                            bestTarget = target
-                        end
-                    end
-                end
-            end
-        end
-
-        if bestPath then break end
-    end
-
-    if not bestPath or not bestTarget then
-        return false
-    end
-
-    local waypoints = bestPath:GetWaypoints()
-    if #waypoints == 0 then return false end
-
-    local blocked = false
-    local currentWaypoint = 0
-    local blockedConnection = bestPath.Blocked:Connect(function(blockedIndex)
-        if blockedIndex >= currentWaypoint then
-            blocked = true
-        end
-    end)
-
-    local reachedAll = true
-    for index, waypoint in ipairs(waypoints) do
-        if not alive() or not homeworkEnabled or not humanoid.Parent then
-            reachedAll = false
-            break
-        end
-        if blocked then
-            reachedAll = false
-            break
-        end
-
-        currentWaypoint = index
-        if waypoint.Action == Enum.PathWaypointAction.Jump then
-            humanoid.Jump = true
-        end
-
-        local reached = false
-        local moveConnection = humanoid.MoveToFinished:Connect(function(success)
-            reached = success
-        end)
-
-        humanoid:MoveTo(waypoint.Position)
-        local distance = (root.Position - waypoint.Position).Magnitude
-        local speed = math.max(humanoid.WalkSpeed, 8)
-        local deadline = os.clock() + math.clamp(distance / speed + 2.5, 2.5, 8)
-
-        while alive() and homeworkEnabled and not reached
-        and not blocked and os.clock() < deadline do
-            task.wait(0.1)
-        end
-
-        moveConnection:Disconnect()
-
-        if not reached then
-            reachedAll = false
-            break
-        end
-    end
-
-    blockedConnection:Disconnect()
-    if not reachedAll or not alive() or not homeworkEnabled then
-        pcall(function() humanoid:MoveTo(root.Position) end)
-        return false
-    end
-
-    -- Jangan aktifkan prompt jika karakter ternyata belum cukup dekat.
-    local activationRange = math.max(prompt.MaxActivationDistance or 0, 7)
-    return (root.Position - part.Position).Magnitude <= activationRange + 2
+    return alive() and homeworkEnabled
 end
 ]=]
 )

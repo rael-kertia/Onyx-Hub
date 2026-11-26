@@ -1427,14 +1427,15 @@ local function hwFindHouse()
             end)
 
             if ok and boxCF and boxSize then
-                local p = root.Position
+                local localPosition = boxCF:PointToObjectSpace(root.Position)
                 local half = boxSize * 0.5
-                local nearestPoint = Vector3.new(
-                    math.clamp(p.X, boxCF.Position.X - half.X, boxCF.Position.X + half.X),
-                    math.clamp(p.Y, boxCF.Position.Y - half.Y, boxCF.Position.Y + half.Y),
-                    math.clamp(p.Z, boxCF.Position.Z - half.Z, boxCF.Position.Z + half.Z)
+                local clampedLocal = Vector3.new(
+                    math.clamp(localPosition.X, -half.X, half.X),
+                    math.clamp(localPosition.Y, -half.Y, half.Y),
+                    math.clamp(localPosition.Z, -half.Z, half.Z)
                 )
-                local distance = (p - nearestPoint).Magnitude
+                local nearestPoint = boxCF:PointToWorldSpace(clampedLocal)
+                local distance = (root.Position - nearestPoint).Magnitude
 
                 if not nearestOwnedDistance or distance < nearestOwnedDistance then
                     nearestOwned, nearestOwnedDistance = house, distance

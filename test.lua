@@ -3,7 +3,7 @@
 
 pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V4 START" end)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-4"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-5"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -30,7 +30,7 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V3 - HW MOVE START")
+    pathDiag("APPROACH PATCH V4 - INPUT PAUSE + DOOR REPLAN")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
@@ -128,6 +128,13 @@ local function hwMove(prompt)
             blockedAt = index
         end)
 
+        local playerScripts = player:FindFirstChild("PlayerScripts")
+        local controls
+        pcall(function()
+            local playerModule = require(playerScripts:WaitForChild("PlayerModule"))
+            controls = playerModule:GetControls()
+        end)
+
         for index, waypoint in ipairs(waypoints) do
             if not alive() or not homeworkEnabled then
                 blockedConnection:Disconnect()
@@ -151,7 +158,10 @@ local function hwMove(prompt)
             pathDiag("MOVETO WAYPOINT " .. tostring(index) .. "/" .. tostring(#waypoints))
             humanoid:MoveTo(waypoint.Position)
             local distance = (r.Position - waypoint.Position).Magnitude
-            local deadline = os.clock() + math.max(4, distance / 8 + 2)
+            local deadline = os.clock() + math.max(6, distance / 7 + 3)
+            local lastPosition = r.Position
+            local lastProgressAt = os.clock()
+            local lastMoveCommand = os.clock()
 
             while os.clock() < deadline do
                 if not alive() or not homeworkEnabled then
@@ -163,10 +173,62 @@ local function hwMove(prompt)
                     blockedConnection:Disconnect()
                     return false
                 end
-                if (r.Position - waypoint.Position).Magnitude <= 3 then break end
+
+                -- Input analog manual mengambil prioritas sementara. Setelah dilepas,
+                -- rute dihitung ulang dari posisi karakter yang terbaru.
+                local manualMove = false
+                if controls then
+                    pcall(function()
+                        manualMove = controls:GetMoveVector().Magnitude > 0.15
+                    end)
+                end
+                if manualMove then
+                    humanoid:MoveTo(r.Position)
+                    pathDiag("INPUT MANUAL - MENUNGGU ANALOG DILEPAS")
+                    repeat
+                        task.wait(0.15)
+                        if not alive() or not homeworkEnabled then
+                            blockedConnection:Disconnect()
+                            return false
+                        end
+                        if controls then
+                            local ok, moveVector = pcall(function()
+                                return controls:GetMoveVector()
+                            end)
+                            manualMove = ok and moveVector.Magnitude > 0.15
+                        else
+                            manualMove = false
+                        end
+                    until not manualMove
+                    blockedConnection:Disconnect()
+                    pathDiag("ANALOG DILEPAS - HITUNG ULANG RUTE")
+                    return false
+                end
+
+                local remainingNow = (r.Position - waypoint.Position).Magnitude
+                if remainingNow <= 3 then break end
                 if blockedAt and blockedAt <= index then
                     blockedConnection:Disconnect()
                     return false
+                end
+
+                if (r.Position - lastPosition).Magnitude >= 0.65 then
+                    lastPosition = r.Position
+                    lastProgressAt = os.clock()
+                elseif os.clock() - lastProgressAt >= 1.8 then
+                    -- Bisa terjadi ketika daun pintu sedang berayun/menahan karakter.
+                    -- Beri waktu singkat, lalu minta rute baru dari posisi aktual.
+                    humanoid:MoveTo(r.Position)
+                    pathDiag("TERHALANG / KEMUNGKINAN PINTU - REPLAN WAYPOINT "
+                        .. tostring(index) .. "/" .. tostring(#waypoints))
+                    task.wait(0.65)
+                    blockedConnection:Disconnect()
+                    return false
+                end
+
+                if os.clock() - lastMoveCommand >= 0.8 then
+                    humanoid:MoveTo(waypoint.Position)
+                    lastMoveCommand = os.clock()
                 end
                 task.wait(0.1)
             end
@@ -191,7 +253,7 @@ local function hwMove(prompt)
 
     --    -- Cari rute ke titik pendekatan yang dapat dicapai, lalu jalankan.
     local reached = false
-    for attempt = 1, 3 do
+    for attempt = 1, 6 do
         if not alive() or not homeworkEnabled then return false end
         pathDiag("MENCARI TITIK PENDEKATAN - PERCOBAAN " .. tostring(attempt))
         local route = findApproachPath()
@@ -202,7 +264,7 @@ local function hwMove(prompt)
         if not route then
             pathDiag("TIDAK ADA TITIK PENDEKATAN: " .. tostring(lastPathError))
         end
-        task.wait(0.25)
+        task.wait(0.7)
     end
 
     if not reached then

@@ -1,9 +1,9 @@
 -- ONYX HUB | MAIN LOADER
 -- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
 
-pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V6 START" end)
+pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V7 START" end)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-6"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-7"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -30,7 +30,7 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V6 - MAX 8 CANDIDATES")
+    pathDiag("APPROACH PATCH V7 - 8 CANDIDATES + COMPUTE TIMEOUT")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
@@ -72,9 +72,31 @@ local function hwMove(prompt)
             AgentCanJump = true,
             WaypointSpacing = 3
         })
-        local computed, computeError = pcall(function()
-            path:ComputeAsync(r.Position, targetPosition)
+        -- ComputeAsync dapat yield lama. Jalankan terpisah dan batasi
+        -- waktu tunggu agar Homework tidak terkunci pada satu kandidat.
+        local completed = false
+        local computed = false
+        local computeError = nil
+        task.spawn(function()
+            computed, computeError = pcall(function()
+                path:ComputeAsync(r.Position, targetPosition)
+            end)
+            completed = true
         end)
+
+        local startedAt = os.clock()
+        while not completed and os.clock() - startedAt < 3 do
+            if not alive() or not homeworkEnabled then
+                lastPathError = "HOMEWORK OFF SAAT COMPUTE"
+                return nil
+            end
+            task.wait(0.05)
+        end
+
+        if not completed then
+            lastPathError = "COMPUTE TIMEOUT 3S"
+            return nil
+        end
         if not computed or path.Status ~= Enum.PathStatus.Success then
             lastPathError = "STATUS=" .. tostring(path.Status) .. " ERROR=" .. tostring(computeError)
             return nil

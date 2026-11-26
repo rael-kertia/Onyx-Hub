@@ -58,30 +58,68 @@ local function hwMove(prompt)
 
     local pathService = game:GetService("PathfindingService")
     local destination = q.Position
+    local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
+    local lastPathError = "BELUM ADA KANDIDAT"
 
-    local function followPath()
+    local function makePath(targetPosition)
         r = hwRoot()
-        if not r then return false end
-
+        if not r then return nil end
         local path = pathService:CreatePath({
-            AgentRadius = 2,
+            AgentRadius = 1.5,
             AgentHeight = 5,
             AgentCanJump = true,
-            WaypointSpacing = 4
+            WaypointSpacing = 3
         })
-
         local computed, computeError = pcall(function()
-            path:ComputeAsync(r.Position, destination)
+            path:ComputeAsync(r.Position, targetPosition)
         end)
-        pathDiag("COMPUTE=" .. tostring(computed) .. " STATUS=" .. tostring(path.Status) .. " ERROR=" .. tostring(computeError))
         if not computed or path.Status ~= Enum.PathStatus.Success then
-            pathDiag("PATH FAILED: " .. tostring(path.Status) .. " / " .. tostring(computeError))
-            return false
+            lastPathError = "STATUS=" .. tostring(path.Status) .. " ERROR=" .. tostring(computeError)
+            return nil
         end
-
         local waypoints = path:GetWaypoints()
-        pathDiag("PATH OK; WAYPOINTS=" .. tostring(#waypoints))
-        if #waypoints == 0 then pathDiag("ZERO WAYPOINTS"); return false end
+        if #waypoints == 0 then
+            lastPathError = "ZERO WAYPOINTS"
+            return nil
+        end
+        local length = 0
+        local previous = r.Position
+        for _, waypoint in ipairs(waypoints) do
+            length = length + (waypoint.Position - previous).Magnitude
+            previous = waypoint.Position
+        end
+        return {path = path, waypoints = waypoints, length = length, target = targetPosition}
+    end
+
+    -- Coba beberapa titik berdiri di sekeliling prompt. Titik prompt sendiri
+    -- sering berada di dalam/menempel geometri sehingga menghasilkan NoPath.
+    local function findApproachPath()
+        local candidates = {}
+        local radii = {2, 4, 6, 8, 10}
+        for _, radius in ipairs(radii) do
+            for step = 0, 7 do
+                local angle = (math.pi * 2 * step) / 8
+                local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
+                local candidatePosition = destination + offset
+                if (candidatePosition - destination).Magnitude <= allowedDistance - 1 then
+                    local candidatePath = makePath(candidatePosition)
+                    if candidatePath then
+                        table.insert(candidates, candidatePath)
+                    end
+                end
+            end
+            if #candidates > 0 then break end
+        end
+        table.sort(candidates, function(a, b) return a.length < b.length end)
+        return candidates[1]
+    end
+
+    local function followPath(route)
+        if not route then return false end
+        local path = route.path
+        local waypoints = route.waypoints
+        pathDiag("APPROACH PATH OK; WAYPOINTS=" .. tostring(#waypoints)
+            .. " LENGTH=" .. string.format("%.1f", route.length))
 
         local blockedAt = nil
         local blockedConnection = path.Blocked:Connect(function(index)
@@ -93,7 +131,6 @@ local function hwMove(prompt)
                 blockedConnection:Disconnect()
                 return false
             end
-
             if blockedAt and blockedAt <= index then
                 pathDiag("BLOCKED AT WAYPOINT " .. tostring(blockedAt) .. "/" .. tostring(index))
                 blockedConnection:Disconnect()
@@ -105,7 +142,6 @@ local function hwMove(prompt)
                 blockedConnection:Disconnect()
                 return false
             end
-
             if waypoint.Action == Enum.PathWaypointAction.Jump then
                 humanoid.Jump = true
             end
@@ -120,29 +156,24 @@ local function hwMove(prompt)
                     blockedConnection:Disconnect()
                     return false
                 end
-
                 r = hwRoot()
                 if not r then
                     blockedConnection:Disconnect()
                     return false
                 end
-
-                if (r.Position - waypoint.Position).Magnitude <= 3 then
-                    break
-                end
-
+                if (r.Position - waypoint.Position).Magnitude <= 3 then break end
                 if blockedAt and blockedAt <= index then
                     blockedConnection:Disconnect()
                     return false
                 end
-
                 task.wait(0.1)
             end
 
             r = hwRoot()
             local remaining = r and (r.Position - waypoint.Position).Magnitude or -1
             if not r or remaining > 4 then
-                pathDiag("WAYPOINT TIMEOUT " .. tostring(index) .. "/" .. tostring(#waypoints) .. " DIST=" .. tostring(remaining))
+                pathDiag("WAYPOINT TIMEOUT " .. tostring(index) .. "/" .. tostring(#waypoints)
+                    .. " DIST=" .. tostring(remaining))
                 blockedConnection:Disconnect()
                 return false
             end
@@ -151,20 +182,25 @@ local function hwMove(prompt)
         blockedConnection:Disconnect()
         r = hwRoot()
         local finalDistance = r and (r.Position - destination).Magnitude or -1
-        local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
-        pathDiag("PATH END DIST=" .. tostring(finalDistance) .. " ALLOWED=" .. tostring(allowedDistance))
+        pathDiag("APPROACH END DIST TO PROMPT=" .. tostring(finalDistance)
+            .. " ALLOWED=" .. tostring(allowedDistance))
         return r ~= nil and finalDistance <= allowedDistance
     end
 
-    -- Hitung ulang satu kali jika jalur pertama terhalang.
+    --    -- Cari rute ke titik pendekatan yang dapat dicapai, lalu jalankan.
     local reached = false
-    for attempt = 1, 2 do
+    for attempt = 1, 3 do
         if not alive() or not homeworkEnabled then return false end
-        if followPath() then
+        pathDiag("MENCARI TITIK PENDEKATAN - PERCOBAAN " .. tostring(attempt))
+        local route = findApproachPath()
+        if route and followPath(route) then
             reached = true
             break
         end
-        task.wait(0.2)
+        if not route then
+            pathDiag("TIDAK ADA TITIK PENDEKATAN: " .. tostring(lastPathError))
+        end
+        task.wait(0.25)
     end
 
     if not reached then

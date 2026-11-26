@@ -3,7 +3,7 @@
 
 pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V7 START" end)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-7"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-ground-recovery-20261126-1"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -32,25 +32,74 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V14 - TARGET HOUSE DOOR COLLISION")
+    pathDiag("APPROACH PATCH V16 - GROUND TP + STUCK JUMP RECOVERY")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
     local q = hwPart(prompt)
     if not r or not q then return false end
 
-    -- TP lama tetap dipakai untuk mengambil/membuang TrashBag.
+    -- Ambil/Buang TrashBag: tetap TP, tetapi mendarat di lantai di samping prompt,
+    -- bukan berdiri di atas tempat sampah. Ini menjaga titik awal Pathfinding valid.
     if prompt.ActionText ~= "Bersihkan" then
         hwForceStand()
         r = hwRoot()
         if not r then return false end
-        r.CFrame = CFrame.new(q.Position + Vector3.new(0, 3.5, 0))
+
+        local character = player.Character
+        local rayParams = RaycastParams.new()
+        rayParams.FilterType = Enum.RaycastFilterType.Exclude
+        rayParams.FilterDescendantsInstances = {character, q}
+        rayParams.IgnoreWater = true
+
+        local humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        local rootOffset = humanoid and (humanoid.HipHeight + r.Size.Y * 0.5) or 3
+        local diagonal = math.sqrt(0.5)
+        local directions = {
+            Vector3.new(1, 0, 0), Vector3.new(-1, 0, 0),
+            Vector3.new(0, 0, 1), Vector3.new(0, 0, -1),
+            Vector3.new(diagonal, 0, diagonal), Vector3.new(diagonal, 0, -diagonal),
+            Vector3.new(-diagonal, 0, diagonal), Vector3.new(-diagonal, 0, -diagonal)
+        }
+        local groundPosition, groundDistance = nil, math.huge
+        local activationRange = math.max(prompt.MaxActivationDistance or 10, 5)
+
+        for _, radius in ipairs({1.5, 2.5, 3.5, 4.5}) do
+            for _, direction in ipairs(directions) do
+                local candidate = q.Position + direction * radius
+                local hit = workspace:Raycast(
+                    candidate + Vector3.new(0, 14, 0),
+                    Vector3.new(0, -60, 0),
+                    rayParams
+                )
+                if hit and hit.Normal.Y >= 0.65 then
+                    local position = Vector3.new(
+                        candidate.X,
+                        hit.Position.Y + rootOffset + 0.12,
+                        candidate.Z
+                    )
+                    local distance = (position - q.Position).Magnitude
+                    if distance <= activationRange and distance < groundDistance then
+                        groundPosition = position
+                        groundDistance = distance
+                    end
+                end
+            end
+            if groundPosition then break end
+        end
+
+        if not groundPosition then
+            pathDiag("TP TRASH DIBATALKAN: LANTAI VALID DI SAMPING PROMPT TIDAK DITEMUKAN")
+            return false
+        end
+
+        r.CFrame = CFrame.new(groundPosition)
         r.AssemblyLinearVelocity = Vector3.zero
         r.AssemblyAngularVelocity = Vector3.zero
-        task.wait(0.15)
+        task.wait(0.2)
         hwForceStand()
-        task.wait(0.15)
-        hwForceStand()
+        pathDiag("TP TRASH: MENDARAT DI LANTAI VALID, JARAK PROMPT="
+            .. string.format("%.1f", groundDistance))
         return alive() and homeworkEnabled
     end
 
@@ -340,6 +389,7 @@ local function hwMove(prompt)
             local lastProgressAt = os.clock()
             local lastMoveCommand = os.clock()
             local doorWaitAttempts = 0
+            local jumpRecoveryUsed = false
             local phasedDoorParts = nil
             local phasedDoorCount = 0
             local phasedDoorUntil = 0
@@ -417,7 +467,22 @@ local function hwMove(prompt)
                     -- Daun pintu dapat mendorong karakter saat melewati ambang.
                     -- Tunggu ayunan pintu selesai, lalu coba waypoint yang sama sekali lagi
                     -- sebelum membatalkan rute dan melakukan replan.
-                    if doorWaitAttempts < 3 then
+                    if not jumpRecoveryUsed then
+                        -- Coba lewati bibir tangga/halangan rendah sebelum recovery pintu.
+                        jumpRecoveryUsed = true
+                        pathDiag("WAYPOINT MACET: COBA LOMPAT RECOVERY")
+                        humanoid.Jump = true
+                        humanoid:MoveTo(waypoint.Position)
+                        task.wait(0.4)
+                        r = hwRoot()
+                        if not r then
+                            blockedConnection:Disconnect()
+                            return false
+                        end
+                        lastPosition = r.Position
+                        lastProgressAt = os.clock()
+                        deadline = deadline + 2
+                    elseif doorWaitAttempts < 3 then
                         doorWaitAttempts = doorWaitAttempts + 1
                         if not phasedDoorParts then
                             local currentRoot = hwRoot()

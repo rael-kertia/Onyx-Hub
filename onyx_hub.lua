@@ -1011,6 +1011,7 @@ local chunk, compileError = loadstring(wrapper)
 assert(chunk, "Wrapper compile gagal: " .. tostring(compileError))
 diagnosticStatus("MENJALANKAN CORE...", false)
 chunk()
+end -- bootOnyxHub
 
 -- Farm / Feed / Convert integration intentionally removed from Onyx Hub.
 

@@ -163,6 +163,51 @@ local function hwMove(prompt)
         return nil
     end
 
+    local function isDoorPart(part)
+        if not part or not part:IsA("BasePart") then return false end
+        local node = part
+        for _ = 1, 5 do
+            if not node then break end
+            local name = string.lower(node.Name)
+            if name:find("door", 1, true)
+            or name:find("pintu", 1, true)
+            or name:find("daunpintu", 1, true) then
+                return true
+            end
+            node = node.Parent
+        end
+        return false
+    end
+
+    local function phaseDoorPartsNearSegment(fromPosition, toPosition)
+        local segment = toPosition - fromPosition
+        local lengthSquared = segment:Dot(segment)
+        local changed = {}
+        local descendants = W:GetDescendants()
+        for _, part in ipairs(descendants) do
+            if part:IsA("BasePart") and part.CanCollide and isDoorPart(part) then
+                local relative = part.Position - fromPosition
+                local alpha = lengthSquared > 0 and math.clamp(relative:Dot(segment) / lengthSquared, 0, 1) or 0
+                local nearest = fromPosition + segment * alpha
+                if (part.Position - nearest).Magnitude <= 4.5 then
+                    changed[part] = part.CanCollide
+                    part.CanCollide = false
+                end
+            end
+        end
+        local count = 0
+        for _ in pairs(changed) do count = count + 1 end
+        return changed, count
+    end
+
+    local function restoreDoorParts(changed)
+        for part, originalCanCollide in pairs(changed or {}) do
+            if part and part.Parent then
+                pcall(function() part.CanCollide = originalCanCollide end)
+            end
+        end
+    end
+
     local function followPath(route)
         if not route then return false end
         local path = route.path
@@ -210,6 +255,9 @@ local function hwMove(prompt)
             local lastProgressAt = os.clock()
             local lastMoveCommand = os.clock()
             local doorWaitAttempts = 0
+            local phasedDoorParts = nil
+            local phasedDoorCount = 0
+            local phasedDoorUntil = 0
 
             while os.clock() < deadline do
                 if not alive() or not homeworkEnabled then
@@ -253,8 +301,25 @@ local function hwMove(prompt)
                     return false
                 end
 
+                if phasedDoorParts then
+                    if os.clock() >= phasedDoorUntil then
+                        restoreDoorParts(phasedDoorParts)
+                        phasedDoorParts = nil
+                        pathDiag("COLLISION PINTU DIPULIHKAN")
+                    else
+                        for part in pairs(phasedDoorParts) do
+                            if part and part.Parent then
+                                pcall(function() part.CanCollide = false end)
+                            end
+                        end
+                    end
+                end
+
                 local remainingNow = (r.Position - waypoint.Position).Magnitude
-                if remainingNow <= 3 then break end
+                if remainingNow <= 3 then
+                    if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
+                    break
+                end
                 if blockedAt and blockedAt <= index then
                     blockedConnection:Disconnect()
                     return false
@@ -269,6 +334,21 @@ local function hwMove(prompt)
                     -- sebelum membatalkan rute dan melakukan replan.
                     if doorWaitAttempts < 3 then
                         doorWaitAttempts = doorWaitAttempts + 1
+                        if not phasedDoorParts then
+                            local currentRoot = hwRoot()
+                            if currentRoot then
+                                phasedDoorParts, phasedDoorCount =
+                                    phaseDoorPartsNearSegment(currentRoot.Position, waypoint.Position)
+                                if phasedDoorCount > 0 then
+                                    phasedDoorUntil = os.clock() + 5
+                                    pathDiag("COLLISION PINTU DIMATIKAN SEMENTARA: "
+                                        .. tostring(phasedDoorCount) .. " PART / 5 DETIK")
+                                else
+                                    pathDiag("PINTU TIDAK TERDETEKSI - CEK NAMA PART/MODEL")
+                                    phasedDoorParts = nil
+                                end
+                            end
+                        end
                         -- Sentuh pintu sebentar untuk memicu animasi bukaan,
                         -- lalu berhenti agar karakter tidak terus melawan daun pintu.
                         pathDiag("PICU PINTU " .. tostring(doorWaitAttempts) .. "/3 - WAYPOINT "
@@ -302,7 +382,8 @@ local function hwMove(prompt)
                         pathDiag("SELESAI MENUNGGU PINTU - COBA LINTASI LAGI")
                     else
                         humanoid:MoveTo(r.Position)
-                        pathDiag("PINTU TETAP TERTUTUP SETELAH 3 PICU - REPLAN WAYPOINT "
+                        if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
+                        pathDiag("PINTU TETAP MENGHALANG SETELAH 3 PICU - REPLAN WAYPOINT "
                             .. tostring(index) .. "/" .. tostring(#waypoints))
                         task.wait(0.65)
                         blockedConnection:Disconnect()
@@ -317,6 +398,7 @@ local function hwMove(prompt)
                 task.wait(0.1)
             end
 
+            if phasedDoorParts then restoreDoorParts(phasedDoorParts) end
             r = hwRoot()
             local remaining = r and (r.Position - waypoint.Position).Magnitude or -1
             if not r or remaining > 4 then

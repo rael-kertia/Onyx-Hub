@@ -67,7 +67,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-core-refresh-20261126j"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -974,7 +974,53 @@ end
 ]====]
 
 
--- HOMEWORK MOVEMENT: PATHFINDING WITH SAFE APPROACH POINTS
+
+-- AUTO CLEAN BUTTON: nama eksplisit dan visibilitas dijamin.
+local oldCleanLine = 'local cleanButton = makeToggle("CleanButton", "CLEANER", 12, 58, 88)'
+local newCleanLine = 'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)'
+if source:find(oldCleanLine, 1, true) then
+    source = source:gsub(oldCleanLine, newCleanLine, 1)
+end
+source = source:gsub(
+    'paintToggle(cleanButton, "CLEANER", enabled)',
+    'paintToggle(cleanButton, "AUTO CLEAN", enabled)',
+    1
+)
+source = source:gsub(
+    'local cleanButton = makeToggle%("CleanButton", "AUTO CLEAN", 12, 58, 88%)',
+    'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)\ncleanButton.Visible = true\ncleanButton.Active = true\ncleanButton.ZIndex = 20',
+    1
+)
+assert(source:find('local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)', 1, true),
+    "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
+
+
+
+-- HOMEWORK: RESOLVE PROMPT PART, INCLUDING ATTACHMENT PARENTS.
+source = onyxReplaceBetween(
+    source,
+    "local function hwPart(prompt)",
+    "local function hwForceStand()",
+    [=[
+local function hwPart(prompt)
+    local parent = prompt and prompt.Parent
+    if not parent then return nil end
+
+    if parent:IsA("BasePart") then
+        return parent
+    end
+
+    if parent:IsA("Attachment") then
+        return parent:FindFirstAncestorWhichIsA("BasePart")
+    end
+
+    return parent:FindFirstAncestorWhichIsA("BasePart")
+        or parent:FindFirstChildWhichIsA("BasePart", true)
+end
+]=]
+)
+
+-- HOMEWORK MOVEMENT: GROUND-VALIDATED PATHFINDING + REPATH.
 source = onyxReplaceBetween(
     source,
     "local function hwMove(prompt)",
@@ -987,116 +1033,207 @@ local function hwMove(prompt)
     local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local root = hwRoot()
-    local target = hwPart(prompt)
-    if not humanoid or humanoid.Health <= 0 or not root or not target then
-        setStatus("PATHFINDING: KARAKTER/TARGET TIDAK VALID")
+    local targetPart = hwPart(prompt)
+
+    if not humanoid or humanoid.Health <= 0 or not root or not targetPart then
+        setStatus("HOMEWORK: TARGET PROMPT TIDAK VALID")
         return false
     end
 
     hwForceStand()
+    character = player.Character
+    humanoid = character and character:FindFirstChildOfClass("Humanoid")
     root = hwRoot()
-    if not root then return false end
+    if not humanoid or not root then return false end
 
-    -- Prompt sering menempel pada dinding/lantai. Jangan jadikan titik
-    -- di dalam part sebagai tujuan; cari titik berdiri di sekelilingnya.
-    local center = target.Position
+    local promptParent = prompt.Parent
+    local promptPosition
+    if promptParent and promptParent:IsA("Attachment") then
+        promptPosition = promptParent.WorldPosition
+    else
+        promptPosition = targetPart.Position
+    end
+
+    -- Cari titik lantai di sekitar prompt. Tujuan path tidak boleh
+    -- berada di tengah part, menempel pada tembok, atau di udara.
+    local rayParams = RaycastParams.new()
+    rayParams.FilterType = Enum.RaycastFilterType.Exclude
+    rayParams.FilterDescendantsInstances = {character}
+    rayParams.IgnoreWater = true
+    rayParams.RespectCanCollide = true
+
     local offsets = {
-        Vector3.new(4, 2.5, 0), Vector3.new(-4, 2.5, 0),
-        Vector3.new(0, 2.5, 4), Vector3.new(0, 2.5, -4),
-        Vector3.new(3, 2.5, 3), Vector3.new(-3, 2.5, 3),
-        Vector3.new(3, 2.5, -3), Vector3.new(-3, 2.5, -3)
+        Vector3.new(0, 0, 0),
+        Vector3.new(3.5, 0, 0), Vector3.new(-3.5, 0, 0),
+        Vector3.new(0, 0, 3.5), Vector3.new(0, 0, -3.5),
+        Vector3.new(4.5, 0, 4.5), Vector3.new(-4.5, 0, 4.5),
+        Vector3.new(4.5, 0, -4.5), Vector3.new(-4.5, 0, -4.5)
     }
 
-    local bestPath, bestDistance
-    for _, offset in ipairs(offsets) do
+    local function findBestPath()
+        local currentRoot = hwRoot()
+        if not currentRoot then return nil end
+
+        local bestPath, bestGoal, bestScore
+        for _, offset in ipairs(offsets) do
+            if not alive() or not homeworkEnabled then return nil end
+
+            local rayOrigin = promptPosition + offset + Vector3.new(0, 8, 0)
+            local hit = workspace:Raycast(rayOrigin, Vector3.new(0, -20, 0), rayParams)
+
+            if hit and hit.Normal.Y >= 0.65
+            and math.abs(hit.Position.Y - promptPosition.Y) <= 6 then
+                local goal = hit.Position + Vector3.new(0, 0.5, 0)
+                local path = PathfindingService:CreatePath({
+                    AgentRadius = 1.5,
+                    AgentHeight = 5,
+                    AgentCanJump = true,
+                    AgentCanClimb = false,
+                    WaypointSpacing = 2.5
+                })
+
+                local computed = pcall(function()
+                    path:ComputeAsync(currentRoot.Position, goal)
+                end)
+
+                if computed and path.Status == Enum.PathStatus.Success then
+                    local waypoints = path:GetWaypoints()
+                    local score = (goal - currentRoot.Position).Magnitude
+                        + (#waypoints * 0.35)
+                    if #waypoints > 0 and (not bestScore or score < bestScore) then
+                        bestPath = path
+                        bestGoal = goal
+                        bestScore = score
+                    end
+                end
+            end
+        end
+
+        return bestPath, bestGoal
+    end
+
+    -- Maksimal tiga percobaan: hitung ulang jika jalur terhalang
+    -- atau karakter gagal mencapai waypoint.
+    for attempt = 1, 3 do
         if not alive() or not homeworkEnabled then return false end
+
         root = hwRoot()
         if not root then return false end
 
-        local goal = center + offset
-        local path = PathfindingService:CreatePath({
-            AgentRadius = 1.5,
-            AgentHeight = 5,
-            AgentCanJump = true,
-            AgentCanClimb = true,
-            WaypointSpacing = 3
-        })
-
-        local ok = pcall(function()
-            path:ComputeAsync(root.Position, goal)
-        end)
-
-        if ok and path.Status == Enum.PathStatus.Success then
-            local distance = (goal - root.Position).Magnitude
-            if not bestDistance or distance < bestDistance then
-                bestPath = path
-                bestDistance = distance
-            end
-        end
-    end
-
-    if not bestPath then
-        setStatus("PATHFINDING: RUTE KE TARGET TIDAK DITEMUKAN")
-        return false
-    end
-
-    local waypoints = bestPath:GetWaypoints()
-    for index, waypoint in ipairs(waypoints) do
-        if not alive() or not homeworkEnabled then return false end
-
-        character = player.Character
-        humanoid = character and character:FindFirstChildOfClass("Humanoid")
-        root = hwRoot()
-        if not humanoid or not root or humanoid.Health <= 0 then return false end
-
-        if waypoint.Action == Enum.PathWaypointAction.Jump then
-            humanoid.Jump = true
-        end
-
-        local finished = false
-        local reached = false
-        local moveConnection
-        moveConnection = humanoid.MoveToFinished:Connect(function(success)
-            reached = success
-            finished = true
-            if moveConnection then
-                moveConnection:Disconnect()
-                moveConnection = nil
-            end
-        end)
-
-        humanoid:MoveTo(waypoint.Position)
-        local deadline = os.clock() + math.max(4, (root.Position - waypoint.Position).Magnitude / math.max(humanoid.WalkSpeed, 8) + 3)
-        while not finished and os.clock() < deadline do
-            if not alive() or not homeworkEnabled then
-                if moveConnection then moveConnection:Disconnect() end
-                return false
-            end
-            task.wait(0.1)
-        end
-        if moveConnection then
-            moveConnection:Disconnect()
-            moveConnection = nil
-        end
-
-        if not finished or not reached then
-            setStatus("PATHFINDING: WAYPOINT " .. tostring(index) .. " GAGAL / TIMEOUT")
+        local path, goal = findBestPath()
+        if not path or not goal then
+            setStatus("PATHFINDING: LANTAI/RUTE TIDAK DITEMUKAN")
             return false
         end
+
+        local waypoints = path:GetWaypoints()
+        local currentWaypoint = 1
+        local blockedAhead = false
+        local blockedConnection = path.Blocked:Connect(function(blockedIndex)
+            if blockedIndex >= currentWaypoint then
+                blockedAhead = true
+            end
+        end)
+
+        local routeOK = true
+        for index, waypoint in ipairs(waypoints) do
+            currentWaypoint = index
+            if not alive() or not homeworkEnabled then
+                routeOK = false
+                break
+            end
+            if blockedAhead then
+                routeOK = false
+                break
+            end
+
+            character = player.Character
+            humanoid = character and character:FindFirstChildOfClass("Humanoid")
+            root = hwRoot()
+            if not humanoid or not root or humanoid.Health <= 0 then
+                routeOK = false
+                break
+            end
+
+            local horizontal = Vector3.new(
+                waypoint.Position.X - root.Position.X,
+                0,
+                waypoint.Position.Z - root.Position.Z
+            ).Magnitude
+
+            if horizontal > 1.8 then
+                if waypoint.Action == Enum.PathWaypointAction.Jump then
+                    humanoid.Jump = true
+                end
+
+                humanoid:MoveTo(waypoint.Position)
+                local speed = math.max(humanoid.WalkSpeed, 8)
+                local timeout = math.max(5, horizontal / speed * 2.5 + 3)
+                local deadline = os.clock() + timeout
+                local reached = false
+
+                while os.clock() < deadline do
+                    if not alive() or not homeworkEnabled or blockedAhead then
+                        break
+                    end
+
+                    root = hwRoot()
+                    if not root then break end
+
+                    local delta = Vector3.new(
+                        waypoint.Position.X - root.Position.X,
+                        0,
+                        waypoint.Position.Z - root.Position.Z
+                    ).Magnitude
+
+                    if delta <= 2.2 then
+                        reached = true
+                        break
+                    end
+                    task.wait(0.1)
+                end
+
+                if not reached then
+                    routeOK = false
+                    break
+                end
+            end
+        end
+
+        blockedConnection:Disconnect()
+
+        if routeOK and not blockedAhead then
+            root = hwRoot()
+            if root then
+                local distance = (root.Position - promptPosition).Magnitude
+                if distance <= 10 then
+                    return true
+                end
+            end
+        end
+
+        local currentHumanoid = player.Character
+            and player.Character:FindFirstChildOfClass("Humanoid")
+        if currentHumanoid then
+            currentHumanoid:Move(Vector3.zero)
+        end
+
+        if attempt < 3 then
+            setStatus("PATHFINDING: HITUNG ULANG RUTE " .. tostring(attempt + 1) .. "/3")
+            task.wait(0.2)
+        end
     end
 
-    root = hwRoot()
-    if root and alive() and homeworkEnabled then
-        return (root.Position - center).Magnitude <= 8
-    end
-
-    setStatus("PATHFINDING: GAGAL MENCAPAI TARGET")
+    setStatus("PATHFINDING: GAGAL MENCAPAI PROMPT")
     return false
 end
 ]=]
 )
 
--- Farm button and updater are already absent from the current core source.
+
+-- Farm, Feed, and Convert controls remain absent; Auto Clean stays enabled in GUI.
+
+
 -- No runtime replacement is needed.
 
 ]==]

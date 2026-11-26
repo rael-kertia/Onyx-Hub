@@ -44,7 +44,7 @@ end
 
 local ok, err = pcall(function()
     status("MENGUNDUH CORE...", false)
-    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126e"
+    local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-cache-refresh-20261126f"
     local response = game:HttpGet(url)
     assert(type(response) == "string" and #response > 10000,
         "CORE TIDAK TERUNDUH / RESPONSE KOSONG")
@@ -74,3 +74,19 @@ end)
 if not ok then
     status("GAGAL: " .. tostring(err):sub(1, 260), true)
 end
+
+-- Cleanup final: jalankan terlepas dari hasil pcall, karena GUI Onyx
+-- dapat sudah tampil meskipun panel diagnostik lama masih tertinggal.
+task.delay(3, function()
+    pcall(function()
+        local currentPlayerGui = player:FindFirstChildOfClass("PlayerGui")
+        if not currentPlayerGui then return end
+        for _, guiName in ipairs({
+            "OnyxLoaderDiagnostic",
+            "OnyxBootDiagnostic"
+        }) do
+            local diagnostic = currentPlayerGui:FindFirstChild(guiName)
+            if diagnostic then diagnostic:Destroy() end
+        end
+    end)
+end)

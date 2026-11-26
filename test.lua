@@ -911,3 +911,170 @@ end)
 if not cleanInitOK then
     onyxCleanReport("GAGAL: " .. tostring(cleanInitError):sub(1, 220))
 end
+
+
+-- =========================================================
+-- ONYX DOOR DIAGNOSTIC V1
+-- Read-only: memindai part fisik di sekitar karakter.
+-- Tidak mengubah collision, posisi, prompt, atau state pintu.
+-- Jalankan saat berdiri di luar pintu rumah yang tertutup.
+-- =========================================================
+task.spawn(function()
+    task.wait(2)
+    local ok, err = pcall(function()
+        local Players = game:GetService("Players")
+        local player = Players.LocalPlayer
+        local character = player and player.Character
+        local root = character and character:FindFirstChild("HumanoidRootPart")
+        assert(root, "HumanoidRootPart tidak ditemukan")
+
+        local center = root.Position
+        local radius = 32
+        local candidates = {}
+        local constraints = {}
+        local prompts = {}
+
+        local function chainName(instance, maxDepth)
+            local names = {}
+            local node = instance
+            for _ = 1, maxDepth do
+                if not node then break end
+                table.insert(names, 1, node.Name)
+                node = node.Parent
+            end
+            return table.concat(names, "/")
+        end
+
+        local function positionOf(instance)
+            if instance:IsA("BasePart") then return instance.Position end
+            if instance:IsA("Attachment") then return instance.WorldPosition end
+            if instance:IsA("ProximityPrompt") then
+                local parent = instance.Parent
+                if parent and parent:IsA("Attachment") then return parent.WorldPosition end
+                if parent and parent:IsA("BasePart") then return parent.Position end
+            end
+            return nil
+        end
+
+        for _, obj in ipairs(workspace:GetDescendants()) do
+            if obj:IsA("BasePart") then
+                local distance = (obj.Position - center).Magnitude
+                if distance <= radius then
+                    table.insert(candidates, {
+                        instance = obj,
+                        distance = distance
+                    })
+                end
+            elseif obj:IsA("HingeConstraint")
+                or obj:IsA("WeldConstraint")
+                or obj:IsA("Motor6D")
+                or obj:IsA("AlignPosition")
+                or obj:IsA("AlignOrientation") then
+                local p0, p1
+                pcall(function()
+                    if obj:IsA("HingeConstraint") then
+                        p0 = obj.Attachment0 and obj.Attachment0.WorldPosition
+                        p1 = obj.Attachment1 and obj.Attachment1.WorldPosition
+                    elseif obj:IsA("WeldConstraint") then
+                        p0 = obj.Part0 and obj.Part0.Position
+                        p1 = obj.Part1 and obj.Part1.Position
+                    elseif obj:IsA("Motor6D") then
+                        p0 = obj.Part0 and obj.Part0.Position
+                        p1 = obj.Part1 and obj.Part1.Position
+                    end
+                end)
+                local d0 = p0 and (p0 - center).Magnitude or math.huge
+                local d1 = p1 and (p1 - center).Magnitude or math.huge
+                if math.min(d0, d1) <= radius + 8 then
+                    table.insert(constraints, {
+                        instance = obj,
+                        distance = math.min(d0, d1),
+                        p0 = p0,
+                        p1 = p1
+                    })
+                end
+            elseif obj:IsA("ProximityPrompt") then
+                local pos = positionOf(obj)
+                if pos and (pos - center).Magnitude <= radius + 12 then
+                    table.insert(prompts, {
+                        instance = obj,
+                        distance = (pos - center).Magnitude,
+                        position = pos
+                    })
+                end
+            end
+        end
+
+        table.sort(candidates, function(a, b) return a.distance < b.distance end)
+        table.sort(constraints, function(a, b) return a.distance < b.distance end)
+        table.sort(prompts, function(a, b) return a.distance < b.distance end)
+
+        local lines = {
+            "ONYX DOOR DIAGNOSTIC V1",
+            "MODE=READ ONLY - TIDAK ADA PROPERTY YANG DIUBAH",
+            "PLAYER=" .. tostring(player and player.Name),
+            "ROOT=" .. tostring(center),
+            "SCAN_RADIUS=" .. tostring(radius),
+            "BASEPART_FOUND=" .. tostring(#candidates),
+            "CONSTRAINT_FOUND=" .. tostring(#constraints),
+            "PROMPT_FOUND=" .. tostring(#prompts),
+            "",
+            "=== BASEPART TERDEKAT (MAKS 60) ==="
+        }
+
+        for i = 1, math.min(#candidates, 60) do
+            local item = candidates[i]
+            local part = item.instance
+            local okGroup, group = pcall(function() return part.CollisionGroup end)
+            local okMaterial, material = pcall(function() return tostring(part.Material) end)
+            table.insert(lines,
+                string.format(
+                    "[PART %02d] DIST=%.1f PATH=%s POS=%s SIZE=%s COLLIDE=%s TOUCH=%s QUERY=%s ANCHORED=%s TRANSP=%.2f GROUP=%s MATERIAL=%s",
+                    i, item.distance, chainName(part, 6), tostring(part.Position),
+                    tostring(part.Size), tostring(part.CanCollide), tostring(part.CanTouch),
+                    tostring(part.CanQuery), tostring(part.Anchored),
+                    part.Transparency, okGroup and tostring(group) or "?", okMaterial and material or "?"
+                )
+            )
+        end
+
+        table.insert(lines, "")
+        table.insert(lines, "=== CONSTRAINT TERDEKAT (MAKS 30) ===")
+        for i = 1, math.min(#constraints, 30) do
+            local item = constraints[i]
+            table.insert(lines,
+                string.format("[JOINT %02d] TYPE=%s PATH=%s DIST=%.1f ATT0/PART0=%s ATT1/PART1=%s",
+                    i, item.instance.ClassName, chainName(item.instance, 6),
+                    item.distance, tostring(item.p0), tostring(item.p1))
+            )
+        end
+
+        table.insert(lines, "")
+        table.insert(lines, "=== PROMPT TERDEKAT (MAKS 25) ===")
+        for i = 1, math.min(#prompts, 25) do
+            local item = prompts[i]
+            local prompt = item.instance
+            table.insert(lines,
+                string.format("[PROMPT %02d] DIST=%.1f ACTION=%s OBJECT=%s ENABLED=%s HOLD=%.2f PATH=%s POS=%s",
+                    i, item.distance, tostring(prompt.ActionText), tostring(prompt.ObjectText),
+                    tostring(prompt.Enabled), prompt.HoldDuration,
+                    chainName(prompt, 6), tostring(item.position))
+            )
+        end
+
+        local report = table.concat(lines, "\n")
+        pcall(function()
+            if typeof(setclipboard) == "function" then setclipboard(report) end
+        end)
+        pcall(function() warn(report) end)
+        pcall(function() getgenv().ONYX_DOOR_DIAG = report end)
+    end)
+
+    if not ok then
+        local report = "ONYX DOOR DIAGNOSTIC ERROR: " .. tostring(err)
+        pcall(function()
+            if typeof(setclipboard) == "function" then setclipboard(report) end
+        end)
+        pcall(function() warn(report) end)
+    end
+end)

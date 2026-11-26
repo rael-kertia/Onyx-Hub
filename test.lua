@@ -24,82 +24,6 @@ end
 source = onyxHomeworkReplaceBetween(
     source,
     "local function hwMove(prompt)",
-    [=[
-local function hwMove(prompt)
-    local function hwDiag(value)
-        pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
-    end
-    if not alive() or not homeworkEnabled then
-        hwDiag("HOMEWORK OFF / NOT ALIVE")
-        return false
-    end
-
-    local root = hwRoot()
-    local targetPart = hwPart(prompt)
-    if not root or not targetPart then
-        hwDiag("ROOT ATAU TARGET PROMPT TIDAK DITEMUKAN")
-        return false
-    end
-
-    hwForceStand()
-    root = hwRoot()
-    if not root then return false end
-
-    local targetPosition = targetPart.Position + Vector3.new(0, 3.5, 0)
-    local distance = (root.Position - targetPosition).Magnitude
-    local speed = 18 -- studs per second; berlaku untuk Bersihkan dan TrashBag
-    local duration = math.max(0.15, distance / speed)
-    local tweenService = game:GetService("TweenService")
-    local tweenInfo = TweenInfo.new(duration, Enum.EasingStyle.Linear, Enum.EasingDirection.Out)
-
-    hwDiag("TWEEN MENUJU " .. tostring(prompt.ActionText)
-        .. " | JARAK=" .. string.format("%.1f", distance)
-        .. " | DURASI=" .. string.format("%.2f", duration))
-
-    local tween
-    local ok, err = pcall(function()
-        tween = tweenService:Create(root, tweenInfo, {
-            CFrame = CFrame.new(targetPosition)
-        })
-        tween:Play()
-    end)
-    if not ok or not tween then
-        hwDiag("TWEEN GAGAL: " .. tostring(err))
-        return false
-    end
-
-    local startedAt = os.clock()
-    while alive() and homeworkEnabled and os.clock() - startedAt < duration + 2 do
-        local state = tween.PlaybackState
-        if state == Enum.PlaybackState.Completed then
-            break
-        elseif state == Enum.PlaybackState.Cancelled then
-            hwDiag("TWEEN DIBATALKAN")
-            return false
-        end
-        task.wait(0.05)
-    end
-
-    if not alive() or not homeworkEnabled then
-        pcall(function() tween:Cancel() end)
-        hwDiag("TWEEN DIHENTIKAN: HOMEWORK OFF")
-        return false
-    end
-
-    if tween.PlaybackState ~= Enum.PlaybackState.Completed then
-        pcall(function() tween:Cancel() end)
-        hwDiag("TWEEN TIMEOUT / BELUM SELESAI")
-        return false
-    end
-
-    hwForceStand()
-    root = hwRoot()
-    if not root then return false end
-    local finalDistance = (root.Position - targetPosition).Magnitude
-    hwDiag("TWEEN SELESAI | SISA JARAK=" .. string.format("%.2f", finalDistance))
-    return finalDistance <= 5 and alive() and homeworkEnabled
-end
-]=],
     "local function hwUse(prompt)",
     [=[
 local onyxHwComputePending = false
@@ -147,41 +71,6 @@ local function hwMove(prompt)
         pathDiag("RUMAH TARGET PROMPT TIDAK DITEMUKAN")
         return false
     end
-    -- V15: buka collision daun pintu RUMAH TARGET sebelum ComputeAsync.
-    -- V14 baru menonaktifkannya setelah karakter macet, padahal path sudah
-    -- dihitung saat pintu masih menjadi penghalang.
-    local onyxHwTargetDoorParts = {}
-    for _, part in ipairs(promptHouse:GetDescendants()) do
-        if part:IsA("BasePart")
-        and string.lower(part.Name) == "door"
-        and part.CanCollide then
-            onyxHwTargetDoorParts[part] = true
-            part.CanCollide = false
-        end
-    end
-    local onyxHwDoorsRestored = false
-    local function restoreOnyxHwTargetDoors()
-        if onyxHwDoorsRestored then return end
-        onyxHwDoorsRestored = true
-        for part in pairs(onyxHwTargetDoorParts) do
-            if part and part.Parent then
-                pcall(function() part.CanCollide = true end)
-            end
-        end
-        pathDiag("COLLISION PINTU TARGET DIPULIHKAN")
-    end
-    if next(onyxHwTargetDoorParts) then
-        local count = 0
-        for _ in pairs(onyxHwTargetDoorParts) do count = count + 1 end
-        pathDiag("PINTU TARGET DIBUKA SEBELUM PATH COMPUTE: " .. tostring(count) .. " PART")
-        -- Beri physics satu frame untuk menerapkan perubahan collision.
-        task.wait(0.25)
-        -- Safety restore bila proses berhenti di tengah jalan.
-        task.delay(20, restoreOnyxHwTargetDoors)
-    else
-        pathDiag("TIDAK ADA DAUN PINTU COLLIDABLE DI RUMAH TARGET")
-    end
-
     local allowedDistance = math.max(prompt.MaxActivationDistance or 10, 8) + 2
     local lastPathError = "BELUM ADA KANDIDAT"
 
@@ -554,13 +443,11 @@ local function hwMove(prompt)
     end
 
     if not reached then
-        restoreOnyxHwTargetDoors()
         pathDiag("GAGAL SETELAH 3 PERCOBAAN PADA PROMPT YANG SAMA; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end
 
-    restoreOnyxHwTargetDoors()
     hwForceStand()
     return alive() and homeworkEnabled
 end

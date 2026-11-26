@@ -1325,7 +1325,7 @@ end
 -- getNearest sendiri yang memilih prompt Ambil/Buang sesuai status bawaan.
 source = onyxReplaceBetween(
     source,
-    "task.spawn(function()\\n    while alive() and gui.Parent do\\n        task.wait(SCAN_DELAY)",
+    "task.spawn(function()\n    while alive() and gui.Parent do\n        task.wait(SCAN_DELAY)",
     "-- AUTO FARM LOOP",
     [=[
 task.spawn(function()

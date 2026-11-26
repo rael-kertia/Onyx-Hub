@@ -979,6 +979,19 @@ end
 assert(source:find("local cleanButton", 1, true),
     "AUTO CLEAN GUI BUTTON TIDAK DITEMUKAN DI CORE")
 
+source = onyxReplaceLineStrict(
+    source,
+    'local cleanButton = makeToggle("CleanButton", "CLEANER", 12, 58, 88)',
+    'local cleanButton = makeToggle("CleanButton", "AUTO CLEAN", 12, 58, 88)',
+    "AUTO CLEAN GUI LABEL"
+)
+source = onyxReplaceLineStrict(
+    source,
+    '    paintToggle(cleanButton, "CLEANER", enabled)',
+    '    paintToggle(cleanButton, "AUTO CLEAN", enabled)',
+    "AUTO CLEAN UPDATE LABEL"
+)
+
 
 -- HOMEWORK: RESOLVE PROMPT PART, INCLUDING ATTACHMENT PARENTS.
 source = onyxReplaceBetween(

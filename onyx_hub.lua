@@ -963,7 +963,7 @@ end
 ]====]
 
 
--- HOMEWORK MOVEMENT: PATHFINDING (NO TELEPORT)
+-- HOMEWORK MOVEMENT: PATHFINDING WITH SAFE APPROACH POINTS
 source = onyxReplaceBetween(
     source,
     "local function hwMove(prompt)",
@@ -973,66 +973,89 @@ local function hwMove(prompt)
     if not alive() or not homeworkEnabled then return false end
 
     local PathfindingService = game:GetService("PathfindingService")
-    local character = game:GetService("Players").LocalPlayer.Character
+    local character = player.Character
     local humanoid = character and character:FindFirstChildOfClass("Humanoid")
     local root = hwRoot()
     local target = hwPart(prompt)
     if not humanoid or humanoid.Health <= 0 or not root or not target then
+        setStatus("PATHFINDING: KARAKTER/TARGET TIDAK VALID")
         return false
     end
 
     hwForceStand()
-    local goal = target.Position + Vector3.new(0, 2, 0)
+    root = hwRoot()
+    if not root then return false end
 
-    -- Recompute once if the first route becomes blocked or cannot be followed.
-    for attempt = 1, 2 do
+    -- Prompt sering menempel pada dinding/lantai. Jangan jadikan titik
+    -- di dalam part sebagai tujuan; cari titik berdiri di sekelilingnya.
+    local center = target.Position
+    local offsets = {
+        Vector3.new(4, 2.5, 0), Vector3.new(-4, 2.5, 0),
+        Vector3.new(0, 2.5, 4), Vector3.new(0, 2.5, -4),
+        Vector3.new(3, 2.5, 3), Vector3.new(-3, 2.5, 3),
+        Vector3.new(3, 2.5, -3), Vector3.new(-3, 2.5, -3)
+    }
+
+    local bestPath, bestDistance
+    for _, offset in ipairs(offsets) do
         if not alive() or not homeworkEnabled then return false end
         root = hwRoot()
         if not root then return false end
 
+        local goal = center + offset
         local path = PathfindingService:CreatePath({
-            AgentRadius = 2,
+            AgentRadius = 1.5,
             AgentHeight = 5,
             AgentCanJump = true,
             AgentCanClimb = true,
-            WaypointSpacing = 4
+            WaypointSpacing = 3
         })
 
-        local computed = pcall(function()
+        local ok = pcall(function()
             path:ComputeAsync(root.Position, goal)
         end)
 
-        if computed and path.Status == Enum.PathStatus.Success then
-            local waypoints = path:GetWaypoints()
-            local routeOK = true
-
-            for _, waypoint in ipairs(waypoints) do
-                if not alive() or not homeworkEnabled then return false end
-
-                if waypoint.Action == Enum.PathWaypointAction.Jump then
-                    humanoid.Jump = true
-                end
-
-                humanoid:MoveTo(waypoint.Position)
-                local reached = humanoid.MoveToFinished:Wait()
-                if not reached then
-                    routeOK = false
-                    break
-                end
-            end
-
-            if routeOK then
-                root = hwRoot()
-                return root ~= nil
-                    and (root.Position - goal).Magnitude <= 6
-                    and alive()
-                    and homeworkEnabled
+        if ok and path.Status == Enum.PathStatus.Success then
+            local distance = (goal - root.Position).Magnitude
+            if not bestDistance or distance < bestDistance then
+                bestPath = path
+                bestDistance = distance
             end
         end
-
-        task.wait(0.2)
     end
 
+    if not bestPath then
+        setStatus("PATHFINDING: RUTE KE TARGET TIDAK DITEMUKAN")
+        return false
+    end
+
+    local waypoints = bestPath:GetWaypoints()
+    for index, waypoint in ipairs(waypoints) do
+        if not alive() or not homeworkEnabled then return false end
+
+        character = player.Character
+        humanoid = character and character:FindFirstChildOfClass("Humanoid")
+        root = hwRoot()
+        if not humanoid or not root or humanoid.Health <= 0 then return false end
+
+        if waypoint.Action == Enum.PathWaypointAction.Jump then
+            humanoid.Jump = true
+        end
+
+        humanoid:MoveTo(waypoint.Position)
+        local reached = humanoid.MoveToFinished:Wait()
+        if not reached then
+            setStatus("PATHFINDING: TERHAMBAT DI WAYPOINT " .. tostring(index))
+            return false
+        end
+    end
+
+    root = hwRoot()
+    if root and alive() and homeworkEnabled then
+        return (root.Position - center).Magnitude <= 8
+    end
+
+    setStatus("PATHFINDING: GAGAL MENCAPAI TARGET")
     return false
 end
 ]=]

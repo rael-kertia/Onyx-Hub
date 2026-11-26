@@ -22,8 +22,8 @@ local function pathOf(x)
     for _=1,6 do if not n then break end table.insert(t,1,n.Name) n=n.Parent end
     return table.concat(t,"/")
 end
-local function add(s) table.insert(lines,tostring(s)) end
 local lines = {}
+local function add(s) table.insert(lines,tostring(s)) end
 add("ONYX-HUB HOMEWORK DIAGNOSIS 2")
 add("Player name="..tostring(player.Name).." | UserId="..tostring(player.UserId))
 add("Character position="..v3(origin))

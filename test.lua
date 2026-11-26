@@ -1,9 +1,9 @@
 -- ONYX HUB | MAIN LOADER
 -- Silent bootstrap: tidak membuat GUI status atau overlay tambahan.
 
-pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V4 START" end)
+pcall(function() getgenv().ONYX_HW_PATH_DIAG = "TEST LOADER V6 START" end)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-5"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=homework-pathfinding-test-20261126-6"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 
@@ -30,7 +30,7 @@ local function hwMove(prompt)
     local function pathDiag(value)
         pcall(function() getgenv().ONYX_HW_PATH_DIAG = tostring(value) end)
     end
-    pathDiag("APPROACH PATCH V4 - INPUT PAUSE + DOOR REPLAN")
+    pathDiag("APPROACH PATCH V6 - MAX 8 CANDIDATES")
     if not alive() or not homeworkEnabled then pathDiag("HOMEWORK OFF / NOT ALIVE"); return false end
 
     local r = hwRoot()
@@ -93,27 +93,35 @@ local function hwMove(prompt)
         return {path = path, waypoints = waypoints, length = length, target = targetPosition}
     end
 
-    -- Coba beberapa titik berdiri di sekeliling prompt. Titik prompt sendiri
-    -- sering berada di dalam/menempel geometri sehingga menghasilkan NoPath.
+    -- Maksimal 8 titik pendekatan: 4 arah pada radius dekat,
+    -- lalu 4 arah pada radius kedua. Berhenti pada jalur valid pertama.
+    -- Ini menghindari puluhan ComputeAsync sebelum karakter mulai bergerak.
     local function findApproachPath()
-        local candidates = {}
-        local radii = {2, 4, 6, 8, 10}
+        local radii = {3, 6}
+        local directions = {
+            Vector3.new(1, 0, 0),
+            Vector3.new(-1, 0, 0),
+            Vector3.new(0, 0, 1),
+            Vector3.new(0, 0, -1)
+        }
+        local checked = 0
         for _, radius in ipairs(radii) do
-            for step = 0, 7 do
-                local angle = (math.pi * 2 * step) / 8
-                local offset = Vector3.new(math.cos(angle) * radius, 0, math.sin(angle) * radius)
-                local candidatePosition = destination + offset
+            for index, direction in ipairs(directions) do
+                if not alive() or not homeworkEnabled then return nil end
+                local candidatePosition = destination + direction * radius
                 if (candidatePosition - destination).Magnitude <= allowedDistance - 1 then
+                    checked = checked + 1
+                    pathDiag("CEK TITIK PENDEKATAN " .. tostring(checked) .. "/8")
                     local candidatePath = makePath(candidatePosition)
                     if candidatePath then
-                        table.insert(candidates, candidatePath)
+                        pathDiag("TITIK PENDEKATAN VALID " .. tostring(checked) .. "/8")
+                        return candidatePath
                     end
                 end
             end
-            if #candidates > 0 then break end
         end
-        table.sort(candidates, function(a, b) return a.length < b.length end)
-        return candidates[1]
+        pathDiag("8 TITIK PENDEKATAN GAGAL")
+        return nil
     end
 
     local function followPath(route)
@@ -268,7 +276,7 @@ local function hwMove(prompt)
     end
 
     if not reached then
-        pathDiag("APPROACH SEARCH FAILED AFTER 3 ATTEMPTS; LAST_ERROR=" .. tostring(lastPathError))
+        pathDiag("APPROACH SEARCH FAILED AFTER 6 ATTEMPTS; LAST_ERROR=" .. tostring(lastPathError))
         setStatus("PATHFINDING RUMAH TERHALANG")
         return false
     end

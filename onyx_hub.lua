@@ -1009,7 +1009,11 @@ local function autoAccGetCards()
         end
     end
 
-    table.sort(result, function(a, b) return a.y < b.y end)
+    table.sort(result, function(a, b)
+        local ay = a.card and a.card.Parent and a.card.AbsolutePosition.Y or math.huge
+        local by = b.card and b.card.Parent and b.card.AbsolutePosition.Y or math.huge
+        return ay < by
+    end)
     return result
 end
 

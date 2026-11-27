@@ -16,8 +16,7 @@ patch = patch .. [====[
 local autoAccInsertMarker = "local function updateButtons()"
 local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
 assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
-assert(not source:find("AutoAccButton", 1, true),
-    "AUTO ACC: tombol sudah ada, cegah duplikasi")
+local autoAccAlreadyInjected = source:find("AutoAccButton", 1, true) ~= nil
 
 local autoAccInsert = [=[
 -- AUTO ACC - FILTER NOMINAL SEWA
@@ -188,9 +187,11 @@ task.spawn(function()
 end)
 ]=]
 
-source = source:sub(1, autoAccInsertAt - 1)
-    .. autoAccInsert .. "\n"
-    .. source:sub(autoAccInsertAt)
+if not autoAccAlreadyInjected then
+    source = source:sub(1, autoAccInsertAt - 1)
+        .. autoAccInsert .. "\n"
+        .. source:sub(autoAccInsertAt)
+end
 
 -- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.
 -- Aksi TrashBag (Ambil/Buang) tetap memakai TP lama.

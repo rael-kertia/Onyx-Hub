@@ -742,7 +742,7 @@ task.spawn(function()
 
     local function parseRentAmount(infoText)
         local raw = tostring(infoText or "")
-        local amountText, suffix = raw:match("[Rr][Pp]%s*([%d][%d%.,]*)%s*([%a]*)")
+        local amountText, suffix = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)%s*([%a]*)")
         if not amountText then
             return nil, "NOMINAL_RP_TIDAK_DITEMUKAN"
         end
@@ -845,6 +845,7 @@ task.spawn(function()
             table.insert(lines, "INFO_RAW=" .. tostring(row.info))
             table.insert(lines, "AMOUNT_RP=" .. (row.amount and string.format("%.0f", row.amount) or "NIL"))
             table.insert(lines, "PARSE_STATUS=" .. tostring(row.parseStatus))
+            table.insert(lines, "DECISION_PREVIEW=" .. (row.amount and (row.amount > 20000000 and "TERIMA" or "TOLAK") or "TIDAK ADA - NOMINAL GAGAL DIBACA"))
             table.insert(lines, "ACCEPT_BUTTON_FOUND=" .. tostring(row.accFound))
             table.insert(lines, "REJECT_BUTTON_FOUND=" .. tostring(row.rejectFound))
             table.insert(lines, "")

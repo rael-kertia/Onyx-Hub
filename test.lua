@@ -11,30 +11,29 @@ local onyxHomeworkPathfindingMarker = "wrapper = wrapper:sub(1, at - 1) .. patch
 local onyxHomeworkPathfindingPatch = [==[
 
 patch = patch .. [====[
--- GANTI AUTO ACC CORE DENGAN VERSI BERFILTER, TOMBOL GUI TETAP AKTIF.
-local function onyxHomeworkReplaceBetween(text, firstMarker, nextMarker, replacement)
-    local a = text:find(firstMarker, 1, true)
-    assert(a, "AUTO ACC: marker awal tidak ditemukan")
-    local b = text:find(nextMarker, a + #firstMarker, true)
-    assert(b, "AUTO ACC: marker akhir tidak ditemukan")
-    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
-end
+-- AUTO ACC: sisipkan ke source GUI pada anchor yang benar.
+-- Core asli tidak memiliki blok Auto ACC lama untuk diganti.
+local autoAccInsertMarker = "local function updateButtons()"
+local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
+assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
+assert(not source:find("AutoAccButton", 1, true),
+    "AUTO ACC: tombol sudah ada, cegah duplikasi")
 
-source = onyxHomeworkReplaceBetween(
-    source,
-    "-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS",
-    "-- FITUR DIHAPUS: AUTO FEED DAN AUTO FARM",
-    [=[
--- AUTO ACC - FILTER NOMINAL
+local autoAccInsert = [=[
+-- AUTO ACC - FILTER NOMINAL SEWA
+frame.Size = UDim2.fromOffset(205, 150)
+status.Position = UDim2.fromOffset(5, 123)
+
 local autoAccEnabled = false
 local autoAccBusy = false
-local autoAccLast = setmetatable({}, {__mode = "k"})
+local autoAccDone = setmetatable({}, {__mode = "k"})
+local autoAccAttempt = setmetatable({}, {__mode = "k"})
 local autoAccVIM = game:GetService("VirtualInputManager")
 
 local autoAccButton = Instance.new("TextButton")
 autoAccButton.Name = "AutoAccButton"
-autoAccButton.Size = UDim2.fromOffset(110, 32)
-autoAccButton.Position = UDim2.fromOffset(12, 188)
+autoAccButton.Size = UDim2.fromOffset(195, 27)
+autoAccButton.Position = UDim2.fromOffset(5, 86)
 autoAccButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
 autoAccButton.BorderSizePixel = 0
 autoAccButton.Text = "AUTO ACC: OFF"
@@ -42,7 +41,7 @@ autoAccButton.TextColor3 = Color3.fromRGB(248, 250, 252)
 autoAccButton.TextSize = 10
 autoAccButton.Font = Enum.Font.GothamBold
 autoAccButton.Parent = frame
-Instance.new("UICorner", autoAccButton).CornerRadius = UDim.new(0, 7)
+Instance.new("UICorner", autoAccButton).CornerRadius = UDim.new(0, 6)
 
 local function setAutoAcc(enabled)
     autoAccEnabled = enabled
@@ -50,7 +49,7 @@ local function setAutoAcc(enabled)
     autoAccButton.BackgroundColor3 = enabled
         and Color3.fromRGB(5, 150, 105)
         or Color3.fromRGB(127, 29, 29)
-    setStatus(enabled and "AUTO ACC AKTIF - FILTER NOMINAL 20 JUTA"
+    setStatus(enabled and "AUTO ACC AKTIF | BATAS RP20 JUTA"
         or "AUTO ACC NONAKTIF")
 end
 
@@ -58,21 +57,25 @@ connect(autoAccButton.Activated, function()
     if alive() then setAutoAcc(not autoAccEnabled) end
 end)
 
-local function autoAccAmount(text)
-    local raw = tostring(text or "")
-    local value = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)")
-    if not value then return nil end
-    -- Format game menggunakan titik/koma sebagai pemisah ribuan.
-    local digits = value:gsub("[^%d]", "")
+local function autoAccParseAmount(value)
+    local raw = tostring(value or "")
+    local amount = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)")
+    if not amount then return nil end
+    local digits = amount:gsub("[^%d]", "")
     if digits == "" then return nil end
     return tonumber(digits)
 end
 
-local function autoAccCards()
-    local found = {}
+local function autoAccGetCards()
+    local result = {}
     local requestUI = playerGui:FindFirstChild("PermintaanSewaUI")
-    local stack = requestUI and requestUI:FindFirstChild("Tumpukan")
-    if not requestUI or not requestUI.Enabled or not stack then return found end
+    if not requestUI then return result end
+    if requestUI:IsA("ScreenGui") and not requestUI.Enabled then
+        return result
+    end
+
+    local stack = requestUI:FindFirstChild("Tumpukan", true)
+    if not stack then return result end
 
     for _, card in ipairs(stack:GetChildren()) do
         if card.Name:match("^Kartu_%d+$") and card.Visible then
@@ -80,35 +83,41 @@ local function autoAccCards()
             local tag = body and body:FindFirstChild("Tag")
             local tagLabel = tag and tag:FindFirstChild("Label")
             local info = body and body:FindFirstChild("Info")
-            local acc = body and body:FindFirstChild("AccBtn")
+            local accept = body and body:FindFirstChild("AccBtn")
             local reject = body and body:FindFirstChild("TolakBtn")
-            if tagLabel and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) and info then
-                local amount = autoAccAmount(info.Text)
+
+            if tagLabel and info
+            and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
+                local amount = autoAccParseAmount(info.Text)
                 if amount then
                     local decision = amount > 20000000 and "TERIMA" or "TOLAK"
-                    local target = decision == "TERIMA" and acc or reject
-                    if target and target:IsA("GuiButton") and target.Visible and target.Active then
-                        local p, size = target.AbsolutePosition, target.AbsoluteSize
-                        table.insert(found, {
+                    local target = decision == "TERIMA" and accept or reject
+                    if target and target:IsA("GuiButton")
+                    and target.Visible and target.Active then
+                        local pos = target.AbsolutePosition
+                        local size = target.AbsoluteSize
+                        result[#result + 1] = {
                             card = card,
                             button = target,
                             amount = amount,
                             info = tostring(info.Text),
                             decision = decision,
-                            x = p.X + size.X / 2,
-                            y = p.Y + size.Y / 2
-                        })
+                            x = pos.X + size.X / 2,
+                            y = pos.Y + size.Y / 2
+                        }
                     end
                 end
             end
         end
     end
-    table.sort(found, function(a, b) return a.y < b.y end)
-    return found
+
+    table.sort(result, function(a, b) return a.y < b.y end)
+    return result
 end
 
 local function autoAccClick(item)
-    local button, x, y = item.button, item.x, item.y
+    local button = item.button
+    local x, y = item.x, item.y
     local pos = Vector2.new(x, y)
 
     pcall(function()
@@ -116,7 +125,7 @@ local function autoAccClick(item)
         task.wait(0.10)
         autoAccVIM:SendTouchEvent(0, Enum.UserInputState.End, pos)
     end)
-    task.wait(0.55)
+    task.wait(0.6)
 
     if button.Parent and button.Visible then
         pcall(function()
@@ -125,7 +134,7 @@ local function autoAccClick(item)
             task.wait(0.10)
             autoAccVIM:SendMouseButtonEvent(x, y, 0, false, game, 1)
         end)
-        task.wait(0.75)
+        task.wait(0.8)
     end
 
     return not (button.Parent and button.Visible)
@@ -134,43 +143,54 @@ end
 task.spawn(function()
     while alive() and gui.Parent do
         if autoAccEnabled and not autoAccBusy then
-            local cards = autoAccCards()
-            if #cards > 0 then
-                local item = cards[1]
-                local fingerprint = item.info .. "|" .. tostring(item.amount) .. "|" .. item.decision
-                if autoAccLast[item.card] ~= fingerprint then
+            local cards = autoAccGetCards()
+            for _, item in ipairs(cards) do
+                local fingerprint = item.info .. "|" .. tostring(item.amount)
+                    .. "|" .. item.decision
+                local now = os.clock()
+                if autoAccDone[item.card] ~= fingerprint
+                and (not autoAccAttempt[item.card]
+                    or now - autoAccAttempt[item.card] >= 3) then
                     autoAccBusy = true
-                    -- Baca ulang nominal sebelum mengirim input ke tombol.
-                    local latest = autoAccCards()
+                    autoAccAttempt[item.card] = now
+
+                    -- Verifikasi ulang kartu dan nominal tepat sebelum klik.
                     local valid
-                    for _, candidate in ipairs(latest) do
-                        if candidate.card == item.card
-                        and candidate.amount == item.amount
-                        and candidate.decision == item.decision then
-                            valid = candidate
+                    for _, current in ipairs(autoAccGetCards()) do
+                        if current.card == item.card
+                        and current.amount == item.amount
+                        and current.decision == item.decision
+                        and current.info == item.info then
+                            valid = current
                             break
                         end
                     end
+
                     if valid then
-                        local success = autoAccClick(valid)
-                        if success then
-                            autoAccLast[item.card] = fingerprint
-                            setStatus("AUTO ACC: " .. valid.decision .. " | Rp " .. string.format("%.0f", valid.amount))
+                        local clicked = autoAccClick(valid)
+                        if clicked then
+                            autoAccDone[item.card] = fingerprint
+                            setStatus("AUTO ACC " .. valid.decision
+                                .. " | RP " .. tostring(valid.amount))
                         else
-                            setStatus("AUTO ACC: KLIK BELUM TERKONFIRMASI - COBA ULANG")
+                            setStatus("AUTO ACC: KLIK BELUM TERKONFIRMASI")
                         end
                     end
+
                     autoAccBusy = false
-                    task.wait(1)
+                    task.wait(0.5)
+                    break
                 end
             end
         end
-        task.wait(0.15)
+        task.wait(0.2)
     end
 end)
-]=],
-    "AUTO ACC FILTERED REPLACEMENT"
-)
+]=]
+
+source = source:sub(1, autoAccInsertAt - 1)
+    .. autoAccInsert .. "\\n"
+    .. source:sub(autoAccInsertAt)
 
 -- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.
 -- Aksi TrashBag (Ambil/Buang) tetap memakai TP lama.

@@ -915,15 +915,6 @@ task.spawn(function()
             table.insert(lines, "STATUS=MENUNGGU KARTU PERMINTAAN SEWA")
         end
 
-        local report = table.concat(lines, "\n")
-        local signature = report
-        if signature ~= lastSignature then
-            lastSignature = signature
-            pcall(function()
-                if typeof(setclipboard) == "function" then setclipboard(report) end
-            end)
-            pcall(function() warn(report) end)
-            pcall(function() getgenv().ONYX_AUTOACC_REPORT = report end)
-        end
+        -- Auto ACC berjalan senyap: tidak membuat diagnosis, clipboard, atau log.
     end
 end)

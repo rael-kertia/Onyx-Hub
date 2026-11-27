@@ -1069,44 +1069,22 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Klik langsung pada tombol target yang sudah lolos validasi nominal.
-    -- Tidak memakai VirtualInputManager, koordinat layar, touch, atau mouse.
-    local fired = false
-
-    if typeof(firesignal) == "function" then
-        local ok = pcall(function()
-            firesignal(button.Activated)
-        end)
-        fired = ok
+    -- Satu-satunya metode klik: event Activated melalui firesignal.
+    -- Tidak ada VirtualInputManager, koordinat, touch, Activate(), atau MouseButton1Click.
+    if typeof(firesignal) ~= "function" then
+        return false
     end
 
-    if not fired then
-        local ok = pcall(function()
-            button:Activate()
-        end)
-        fired = ok
+    local ok = pcall(function()
+        firesignal(button.Activated)
+    end)
+    if not ok then
+        return false
     end
 
-    if fired then
-        task.wait(0.45)
-        if not card.Parent or not card.Visible then
-            return true
-        end
-    end
-
-    -- Fallback event MouseButton1Click untuk GUI yang memakai event lama.
-    if card.Parent and card.Visible and button.Parent and button.Visible then
-        if typeof(firesignal) == "function" then
-            pcall(function()
-                firesignal(button.MouseButton1Click)
-            end)
-            task.wait(0.65)
-        end
-    end
-
+    task.wait(0.45)
     return not card.Parent or not card.Visible
 end
-
 task.spawn(function()
     while alive() and gui.Parent do
         if autoAccEnabled and not autoAccBusy then

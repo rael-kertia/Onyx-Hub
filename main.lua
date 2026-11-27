@@ -299,7 +299,6 @@ if not autoAccAlreadyInjected then
         .. source:sub(autoAccInsertAt)
 end
 ]====]
-]====]
 ]==]
 
 response = response:sub(1, wrapperPatchAt - 1)

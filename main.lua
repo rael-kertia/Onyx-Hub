@@ -11,17 +11,26 @@ local wrapperPatchAt = response:find(wrapperPatchMarker, 1, true)
 assert(wrapperPatchAt, "ONYX AUTO ACC: titik integrasi core tidak ditemukan")
 
 local wrapperPatch = [==[
-patch = patch .. [====[
-local autoAccStartMarker = "-- AUTO ACC - FILTER NOMINAL SEWA"
-local autoAccEndMarker = "local function updateButtons()"
-local autoAccStart = source:find(autoAccStartMarker, 1, true)
-local autoAccEnd = source:find(autoAccEndMarker, 1, true)
-assert(autoAccStart and autoAccEnd and autoAccEnd > autoAccStart,
-    "ONYX AUTO ACC: blok lama atau anchor GUI tidak ditemukan")
-assert(not source:find(autoAccStartMarker, autoAccStart + #autoAccStartMarker, true),
-    "ONYX AUTO ACC: blok lama terdeteksi lebih dari satu")
 
-local autoAccReplacement = [======[
+-- AUTO ACC: sisipkan ke source GUI pada anchor yang benar.
+-- Core asli tidak memiliki blok Auto ACC lama untuk diganti.
+local autoAccInsertMarker = "local function updateButtons()"
+local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
+assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
+-- HAPUS JALUR AUTO ACC LEGACY.
+-- Versi lama selalu menekan AccBtn dengan VirtualInputManager tanpa filter nominal.
+-- Blok legacy berada sebelum blok Auto Gacha di source hasil decode.
+local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
+if legacyAutoAccStart then
+    local nextSourceBlock = source:find("-- AUTO GACHA - TERINTEGRASI KE GUI UTAMA", legacyAutoAccStart, true)
+    assert(nextSourceBlock, "AUTO ACC: batas akhir blok legacy tidak ditemukan")
+    source = source:sub(1, legacyAutoAccStart - 1) .. source:sub(nextSourceBlock)
+end
+
+local autoAccAlreadyInjected = source:find("AutoAccButton", 1, true) ~= nil
+assert(not autoAccAlreadyInjected, "AUTO ACC: instance legacy masih tertinggal setelah pembersihan")
+
+local autoAccInsert = [=[
 -- AUTO ACC - FILTER NOMINAL SEWA
 frame.Size = UDim2.fromOffset(205, 150)
 status.Position = UDim2.fromOffset(5, 123)
@@ -281,11 +290,13 @@ task.spawn(function()
         task.wait(0.15)
     end
 end)
-]======]
+]=]
 
-source = source:sub(1, autoAccStart - 1)
-    .. autoAccReplacement .. "\n"
-    .. source:sub(autoAccEnd)
+if not autoAccAlreadyInjected then
+    source = source:sub(1, autoAccInsertAt - 1)
+        .. autoAccInsert .. "\n"
+        .. source:sub(autoAccInsertAt)
+end
 ]====]
 ]==]
 

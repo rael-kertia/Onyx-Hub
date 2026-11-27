@@ -27,7 +27,6 @@ local autoAccEnabled = false
 local autoAccBusy = false
 local autoAccDone = setmetatable({}, {__mode = "k"})
 local autoAccAttempt = setmetatable({}, {__mode = "k"})
-local autoAccVIM = game:GetService("VirtualInputManager")
 
 local autoAccButton = Instance.new("TextButton")
 autoAccButton.Name = "AutoAccButton"
@@ -115,28 +114,37 @@ local function autoAccGetCards()
 end
 
 local function autoAccClick(item)
-    local button = item.button
-    local x, y = item.x, item.y
-    local pos = Vector2.new(x, y)
+    local button = item and item.button
+    local expectedName = item and item.decision == "TERIMA" and "AccBtn" or "TolakBtn"
 
-    pcall(function()
-        autoAccVIM:SendTouchEvent(0, Enum.UserInputState.Begin, pos)
-        task.wait(0.10)
-        autoAccVIM:SendTouchEvent(0, Enum.UserInputState.End, pos)
-    end)
-    task.wait(0.6)
-
-    if button.Parent and button.Visible then
-        pcall(function()
-            autoAccVIM:SendMouseMoveEvent(x, y, game)
-            autoAccVIM:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.10)
-            autoAccVIM:SendMouseButtonEvent(x, y, 0, false, game, 1)
-        end)
-        task.wait(0.8)
+    -- Fail closed: tombol harus cocok dengan keputusan dan nominal harus
+    -- dihitung ulang tepat sebelum aksi.
+    if not button or not button.Parent
+    or not button:IsA("GuiButton")
+    or button.Name ~= expectedName
+    or not button.Visible or not button.Active then
+        return false
     end
 
-    return not (button.Parent and button.Visible)
+    local verifiedAmount = autoAccParseAmount(item.info)
+    if not verifiedAmount or verifiedAmount ~= item.amount then
+        return false
+    end
+
+    local shouldAccept = verifiedAmount > 20000000
+    if (item.decision == "TERIMA") ~= shouldAccept then
+        return false
+    end
+
+    -- Activate langsung pada instance tombol yang sudah diverifikasi;
+    -- tidak memakai koordinat layar/touch yang berisiko mengenai tombol lain.
+    local ok = pcall(function()
+        button:Activate()
+    end)
+    if not ok then return false end
+
+    task.wait(0.8)
+    return not button.Parent or not button.Visible or not item.card.Parent
 end
 
 task.spawn(function()

@@ -3,8 +3,12 @@ local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local out = {}
 local function add(s) out[#out+1] = tostring(s) end
 local function amount(s)
-    local n = tostring(s or ""):match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)")
-    return n and tonumber(n:gsub("[^%d]", "")) or nil
+    local raw = tostring(s or "")
+    local p = raw:lower():find("rp", 1, true)
+    if not p then return nil end
+    local n = raw:sub(p + 2):gsub("[^%d]", "")
+    if n == "" then return nil end
+    return tonumber(n)
 end
 for _,ui in ipairs(pg:GetDescendants()) do
     if ui.Name == "PermintaanSewaUI" then

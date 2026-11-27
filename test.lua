@@ -11,15 +11,160 @@ local onyxHomeworkPathfindingMarker = "wrapper = wrapper:sub(1, at - 1) .. patch
 local onyxHomeworkPathfindingPatch = [==[
 
 patch = patch .. [====[
--- NONAKTIFKAN AUTO ACC LAMA DI CORE.
--- Versi lama selalu menekan AccBtn tanpa memeriksa nominal.
-local legacyAccButtonMarker = "autoAccButton.Parent = frame"
-assert(source:find(legacyAccButtonMarker, 1, true),
-    "AUTO ACC LAMA: marker tombol tidak ditemukan")
-source = source:gsub(
-    legacyAccButtonMarker,
-    legacyAccButtonMarker .. "\nautoAccButton.Visible = false",
-    1
+-- GANTI AUTO ACC CORE DENGAN VERSI BERFILTER, TOMBOL GUI TETAP AKTIF.
+local function onyxHomeworkReplaceBetween(text, firstMarker, nextMarker, replacement)
+    local a = text:find(firstMarker, 1, true)
+    assert(a, "AUTO ACC: marker awal tidak ditemukan")
+    local b = text:find(nextMarker, a + #firstMarker, true)
+    assert(b, "AUTO ACC: marker akhir tidak ditemukan")
+    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
+end
+
+source = onyxHomeworkReplaceBetween(
+    source,
+    "-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS",
+    "-- FITUR DIHAPUS: AUTO FEED DAN AUTO FARM",
+    [=[
+-- AUTO ACC - FILTER NOMINAL
+local autoAccEnabled = false
+local autoAccBusy = false
+local autoAccLast = setmetatable({}, {__mode = "k"})
+local autoAccVIM = game:GetService("VirtualInputManager")
+
+local autoAccButton = Instance.new("TextButton")
+autoAccButton.Name = "AutoAccButton"
+autoAccButton.Size = UDim2.fromOffset(110, 32)
+autoAccButton.Position = UDim2.fromOffset(12, 188)
+autoAccButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
+autoAccButton.BorderSizePixel = 0
+autoAccButton.Text = "AUTO ACC: OFF"
+autoAccButton.TextColor3 = Color3.fromRGB(248, 250, 252)
+autoAccButton.TextSize = 10
+autoAccButton.Font = Enum.Font.GothamBold
+autoAccButton.Parent = frame
+Instance.new("UICorner", autoAccButton).CornerRadius = UDim.new(0, 7)
+
+local function setAutoAcc(enabled)
+    autoAccEnabled = enabled
+    autoAccButton.Text = enabled and "AUTO ACC: ON" or "AUTO ACC: OFF"
+    autoAccButton.BackgroundColor3 = enabled
+        and Color3.fromRGB(5, 150, 105)
+        or Color3.fromRGB(127, 29, 29)
+    setStatus(enabled and "AUTO ACC AKTIF - FILTER NOMINAL 20 JUTA"
+        or "AUTO ACC NONAKTIF")
+end
+
+connect(autoAccButton.Activated, function()
+    if alive() then setAutoAcc(not autoAccEnabled) end
+end)
+
+local function autoAccAmount(text)
+    local raw = tostring(text or "")
+    local value = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)")
+    if not value then return nil end
+    -- Format game menggunakan titik/koma sebagai pemisah ribuan.
+    local digits = value:gsub("[^%d]", "")
+    if digits == "" then return nil end
+    return tonumber(digits)
+end
+
+local function autoAccCards()
+    local found = {}
+    local requestUI = playerGui:FindFirstChild("PermintaanSewaUI")
+    local stack = requestUI and requestUI:FindFirstChild("Tumpukan")
+    if not requestUI or not requestUI.Enabled or not stack then return found end
+
+    for _, card in ipairs(stack:GetChildren()) do
+        if card.Name:match("^Kartu_%d+$") and card.Visible then
+            local body = card:FindFirstChild("Isi")
+            local tag = body and body:FindFirstChild("Tag")
+            local tagLabel = tag and tag:FindFirstChild("Label")
+            local info = body and body:FindFirstChild("Info")
+            local acc = body and body:FindFirstChild("AccBtn")
+            local reject = body and body:FindFirstChild("TolakBtn")
+            if tagLabel and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) and info then
+                local amount = autoAccAmount(info.Text)
+                if amount then
+                    local decision = amount > 20000000 and "TERIMA" or "TOLAK"
+                    local target = decision == "TERIMA" and acc or reject
+                    if target and target:IsA("GuiButton") and target.Visible and target.Active then
+                        local p, size = target.AbsolutePosition, target.AbsoluteSize
+                        table.insert(found, {
+                            card = card,
+                            button = target,
+                            amount = amount,
+                            info = tostring(info.Text),
+                            decision = decision,
+                            x = p.X + size.X / 2,
+                            y = p.Y + size.Y / 2
+                        })
+                    end
+                end
+            end
+        end
+    end
+    table.sort(found, function(a, b) return a.y < b.y end)
+    return found
+end
+
+local function autoAccClick(item)
+    local button, x, y = item.button, item.x, item.y
+    local pos = Vector2.new(x, y)
+    local clicked = false
+    pcall(function()
+        autoAccVIM:SendTouchEvent(0, Enum.UserInputState.Begin, pos)
+        task.wait(0.08)
+        autoAccVIM:SendTouchEvent(0, Enum.UserInputState.End, pos)
+        clicked = true
+    end)
+    task.wait(0.35)
+    if button.Parent and button.Visible then
+        pcall(function()
+            autoAccVIM:SendMouseMoveEvent(x, y, game)
+            autoAccVIM:SendMouseButtonEvent(x, y, 0, true, game, 1)
+            task.wait(0.08)
+            autoAccVIM:SendMouseButtonEvent(x, y, 0, false, game, 1)
+            clicked = true
+        end)
+    end
+    return clicked
+end
+
+task.spawn(function()
+    while alive() and gui.Parent do
+        if autoAccEnabled and not autoAccBusy then
+            local cards = autoAccCards()
+            if #cards > 0 then
+                local item = cards[1]
+                local fingerprint = item.info .. "|" .. tostring(item.amount) .. "|" .. item.decision
+                if autoAccLast[item.card] ~= fingerprint then
+                    autoAccBusy = true
+                    -- Baca ulang nominal sebelum mengirim input ke tombol.
+                    local latest = autoAccCards()
+                    local valid
+                    for _, candidate in ipairs(latest) do
+                        if candidate.card == item.card
+                        and candidate.amount == item.amount
+                        and candidate.decision == item.decision then
+                            valid = candidate
+                            break
+                        end
+                    end
+                    if valid then
+                        autoAccClick(valid)
+                        autoAccLast[item.card] = fingerprint
+                        setStatus("AUTO ACC: " .. valid.decision .. " | Rp " .. string.format("%.0f", valid.amount))
+                    end
+                    autoAccBusy = false
+                    task.wait(0.7)
+                end
+            end
+        end
+        task.wait(0.15)
+    end
+end)
+]=],
+    "AUTO ACC FILTERED REPLACEMENT"
 )
 
 -- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.
@@ -560,375 +705,3 @@ end)
 if not cleanInitOK then
     onyxCleanReport("GAGAL: " .. tostring(cleanInitError):sub(1, 220))
 end
-
-
--- =========================================================
--- ONYX DOOR DIAGNOSTIC V1
--- Read-only: memindai part fisik di sekitar karakter.
--- Tidak mengubah collision, posisi, prompt, atau state pintu.
--- Jalankan saat berdiri di luar pintu rumah yang tertutup.
--- =========================================================
-task.spawn(function()
-    task.wait(2)
-    local ok, err = pcall(function()
-        local Players = game:GetService("Players")
-        local player = Players.LocalPlayer
-        local character = player and player.Character
-        local root = character and character:FindFirstChild("HumanoidRootPart")
-        assert(root, "HumanoidRootPart tidak ditemukan")
-
-        local center = root.Position
-        local radius = 32
-        local candidates = {}
-        local constraints = {}
-        local prompts = {}
-
-        local function chainName(instance, maxDepth)
-            local names = {}
-            local node = instance
-            for _ = 1, maxDepth do
-                if not node then break end
-                table.insert(names, 1, node.Name)
-                node = node.Parent
-            end
-            return table.concat(names, "/")
-        end
-
-        local function positionOf(instance)
-            if instance:IsA("BasePart") then return instance.Position end
-            if instance:IsA("Attachment") then return instance.WorldPosition end
-            if instance:IsA("ProximityPrompt") then
-                local parent = instance.Parent
-                if parent and parent:IsA("Attachment") then return parent.WorldPosition end
-                if parent and parent:IsA("BasePart") then return parent.Position end
-            end
-            return nil
-        end
-
-        for _, obj in ipairs(workspace:GetDescendants()) do
-            if obj:IsA("BasePart") then
-                local distance = (obj.Position - center).Magnitude
-                if distance <= radius then
-                    table.insert(candidates, {
-                        instance = obj,
-                        distance = distance
-                    })
-                end
-            elseif obj:IsA("HingeConstraint")
-                or obj:IsA("WeldConstraint")
-                or obj:IsA("Motor6D")
-                or obj:IsA("AlignPosition")
-                or obj:IsA("AlignOrientation") then
-                local p0, p1
-                pcall(function()
-                    if obj:IsA("HingeConstraint") then
-                        p0 = obj.Attachment0 and obj.Attachment0.WorldPosition
-                        p1 = obj.Attachment1 and obj.Attachment1.WorldPosition
-                    elseif obj:IsA("WeldConstraint") then
-                        p0 = obj.Part0 and obj.Part0.Position
-                        p1 = obj.Part1 and obj.Part1.Position
-                    elseif obj:IsA("Motor6D") then
-                        p0 = obj.Part0 and obj.Part0.Position
-                        p1 = obj.Part1 and obj.Part1.Position
-                    end
-                end)
-                local d0 = p0 and (p0 - center).Magnitude or math.huge
-                local d1 = p1 and (p1 - center).Magnitude or math.huge
-                if math.min(d0, d1) <= radius + 8 then
-                    table.insert(constraints, {
-                        instance = obj,
-                        distance = math.min(d0, d1),
-                        p0 = p0,
-                        p1 = p1
-                    })
-                end
-            elseif obj:IsA("ProximityPrompt") then
-                local pos = positionOf(obj)
-                if pos and (pos - center).Magnitude <= radius + 12 then
-                    table.insert(prompts, {
-                        instance = obj,
-                        distance = (pos - center).Magnitude,
-                        position = pos
-                    })
-                end
-            end
-        end
-
-        table.sort(candidates, function(a, b) return a.distance < b.distance end)
-        table.sort(constraints, function(a, b) return a.distance < b.distance end)
-        table.sort(prompts, function(a, b) return a.distance < b.distance end)
-
-        local lines = {
-            "ONYX DOOR DIAGNOSTIC V1",
-            "MODE=READ ONLY - TIDAK ADA PROPERTY YANG DIUBAH",
-            "PLAYER=" .. tostring(player and player.Name),
-            "ROOT=" .. tostring(center),
-            "SCAN_RADIUS=" .. tostring(radius),
-            "BASEPART_FOUND=" .. tostring(#candidates),
-            "CONSTRAINT_FOUND=" .. tostring(#constraints),
-            "PROMPT_FOUND=" .. tostring(#prompts),
-            "",
-            "=== BASEPART TERDEKAT (MAKS 60) ==="
-        }
-
-        for i = 1, math.min(#candidates, 60) do
-            local item = candidates[i]
-            local part = item.instance
-            local okGroup, group = pcall(function() return part.CollisionGroup end)
-            local okMaterial, material = pcall(function() return tostring(part.Material) end)
-            table.insert(lines,
-                string.format(
-                    "[PART %02d] DIST=%.1f PATH=%s POS=%s SIZE=%s COLLIDE=%s TOUCH=%s QUERY=%s ANCHORED=%s TRANSP=%.2f GROUP=%s MATERIAL=%s",
-                    i, item.distance, chainName(part, 6), tostring(part.Position),
-                    tostring(part.Size), tostring(part.CanCollide), tostring(part.CanTouch),
-                    tostring(part.CanQuery), tostring(part.Anchored),
-                    part.Transparency, okGroup and tostring(group) or "?", okMaterial and material or "?"
-                )
-            )
-        end
-
-        table.insert(lines, "")
-        table.insert(lines, "=== CONSTRAINT TERDEKAT (MAKS 30) ===")
-        for i = 1, math.min(#constraints, 30) do
-            local item = constraints[i]
-            table.insert(lines,
-                string.format("[JOINT %02d] TYPE=%s PATH=%s DIST=%.1f ATT0/PART0=%s ATT1/PART1=%s",
-                    i, item.instance.ClassName, chainName(item.instance, 6),
-                    item.distance, tostring(item.p0), tostring(item.p1))
-            )
-        end
-
-        table.insert(lines, "")
-        table.insert(lines, "=== PROMPT TERDEKAT (MAKS 25) ===")
-        for i = 1, math.min(#prompts, 25) do
-            local item = prompts[i]
-            local prompt = item.instance
-            table.insert(lines,
-                string.format("[PROMPT %02d] DIST=%.1f ACTION=%s OBJECT=%s ENABLED=%s HOLD=%.2f PATH=%s POS=%s",
-                    i, item.distance, tostring(prompt.ActionText), tostring(prompt.ObjectText),
-                    tostring(prompt.Enabled), prompt.HoldDuration,
-                    chainName(prompt, 6), tostring(item.position))
-            )
-        end
-
-        local report = table.concat(lines, "\n")
-        pcall(function()
-            if typeof(setclipboard) == "function" then setclipboard(report) end
-        end)
-        pcall(function() warn(report) end)
-        pcall(function() getgenv().ONYX_DOOR_DIAG = report end)
-    end)
-
-    if not ok then
-        local report = "ONYX DOOR DIAGNOSTIC ERROR: " .. tostring(err)
-        pcall(function()
-            if typeof(setclipboard) == "function" then setclipboard(report) end
-        end)
-        pcall(function() warn(report) end)
-    end
-end)
-
-
--- ONYX AUTO ACC ACTIVE TEST V1
--- Aturan: nominal > Rp20.000.000 = TERIMA; selain itu = TOLAK.
--- Hanya memakai tombol GUI AccBtn/TolakBtn; tidak memanggil remote.
--- Matikan loop Auto ACC test dari eksekusi sebelumnya sebelum membuat loop baru.
-getgenv().ONYX_AUTOACC_STOP = true
-task.wait(0.4)
-task.spawn(function()
-    local Players = game:GetService("Players")
-    local player = Players.LocalPlayer
-    local playerGui = player:WaitForChild("PlayerGui")
-    local processed = setmetatable({}, { __mode = "k" })
-    local scanCount = 0
-    local lastSignature = nil
-
-    getgenv().ONYX_AUTOACC_STOP = false
-    getgenv().ONYX_AUTOACC_STATUS = "ACTIVE"
-
-    local function isVisible(object)
-        local node = object
-        while node do
-            if node:IsA("GuiObject") and not node.Visible then
-                return false
-            end
-            if node:IsA("ScreenGui") and not node.Enabled then
-                return false
-            end
-            node = node.Parent
-        end
-        return true
-    end
-
-    local function parseRentAmount(infoText)
-        local raw = tostring(infoText or "")
-        local amountText, suffix = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)%s*([%a]*)")
-        if not amountText then
-            return nil, "NOMINAL_RP_TIDAK_DITEMUKAN"
-        end
-
-        suffix = (suffix or ""):lower()
-        local number
-
-        if suffix == "jt" or suffix == "juta" or suffix == "m" then
-            local normalized = amountText:gsub(",", ".")
-            local dots = select(2, normalized:gsub("%.", ""))
-            if dots > 1 then normalized = normalized:gsub("%.", "") end
-            number = tonumber(normalized)
-            if number then number = number * 1000000 end
-        elseif suffix == "rb" or suffix == "ribu" or suffix == "k" then
-            local normalized = amountText:gsub(",", ".")
-            local dots = select(2, normalized:gsub("%.", ""))
-            if dots > 1 then normalized = normalized:gsub("%.", "") end
-            number = tonumber(normalized)
-            if number then number = number * 1000 end
-        elseif suffix == "" then
-            number = tonumber((amountText:gsub("[^%d]", "")))
-        else
-            return nil, "SUFFIX_TIDAK_DIKENAL:" .. suffix
-        end
-
-        if not number then
-            return nil, "GAGAL_PARSE:" .. amountText .. suffix
-        end
-        return number, "OK"
-    end
-
-    local function getCardData(card)
-        local body = card:FindFirstChild("Isi")
-        if not body then return nil end
-        local tag = body:FindFirstChild("Tag")
-        local tagLabel = tag and tag:FindFirstChild("Label")
-        local info = body:FindFirstChild("Info")
-        local nameLabel = body:FindFirstChild("NamaPenyewa")
-        local tagText = tagLabel and tagLabel.Text or ""
-        if not tagText:upper():find("PERMINTAAN SEWA", 1, true) then
-            return nil
-        end
-        local infoText = info and info.Text or ""
-        local amount, parseStatus = parseRentAmount(infoText)
-        return {
-            body = body,
-            tenant = nameLabel and nameLabel.Text or "TIDAK ADA",
-            info = infoText,
-            amount = amount,
-            parseStatus = parseStatus,
-            acc = body:FindFirstChild("AccBtn"),
-            reject = body:FindFirstChild("TolakBtn")
-        }
-    end
-
-    while task.wait(0.35) do
-        if getgenv().ONYX_AUTOACC_STOP then
-            getgenv().ONYX_AUTOACC_STATUS = "STOPPED"
-            break
-        end
-
-        scanCount = scanCount + 1
-        local gui = playerGui:FindFirstChild("PermintaanSewaUI")
-        local stack = gui and gui:FindFirstChild("Tumpukan")
-        local rows = {}
-        local visibleCards = 0
-        local actionCount = 0
-
-        if stack then
-            for _, card in ipairs(stack:GetChildren()) do
-                if card.Name:match("^Kartu_%d+$") and isVisible(card) then
-                    local data = getCardData(card)
-                    if data then
-                        visibleCards = visibleCards + 1
-                        local decision = data.amount and (data.amount > 20000000 and "TERIMA" or "TOLAK") or "TIDAK ADA - NOMINAL GAGAL DIBACA"
-                        local fingerprint = table.concat({
-                            tostring(data.tenant), tostring(data.info),
-                            tostring(data.amount), tostring(decision)
-                        }, "|")
-                        local action = "MENUNGGU"
-
-                        if not data.amount then
-                            action = "DILEWATI - NOMINAL GAGAL DIBACA"
-                        elseif processed[card] == fingerprint then
-                            action = "SUDAH DIPROSES"
-                        else
-                            local target = data.amount > 20000000 and data.acc or data.reject
-                            if not target or not target:IsA("GuiButton") then
-                                action = data.amount > 20000000 and "GAGAL - ACCBTN TIDAK DITEMUKAN" or "GAGAL - TOLAKBTN TIDAK DITEMUKAN"
-                            elseif not isVisible(target) or not card.Parent then
-                                action = "GAGAL - TOMBOL/KARTU TIDAK AKTIF"
-                            else
-                                -- Validasi ulang nominal tepat sebelum tombol ditekan.
-                                local fresh = getCardData(card)
-                                if not fresh or not fresh.amount then
-                                    action = "DILEWATI - VALIDASI ULANG GAGAL"
-                                else
-                                    local freshDecision = fresh.amount > 20000000 and "TERIMA" or "TOLAK"
-                                    local freshTarget = fresh.amount > 20000000 and fresh.acc or fresh.reject
-                                    if freshDecision ~= decision or fresh.info ~= data.info or not freshTarget or not isVisible(freshTarget) then
-                                        action = "DILEWATI - DATA BERUBAH SAAT VALIDASI"
-                                    else
-                                        local ok, err = pcall(function()
-                                            freshTarget:Activate()
-                                        end)
-                                        if ok then
-                                            processed[card] = fingerprint
-                                            action = "BERHASIL KLIK " .. freshDecision
-                                            actionCount = actionCount + 1
-                                        else
-                                            action = "GAGAL KLIK: " .. tostring(err)
-                                        end
-                                    end
-                                end
-                            end
-                        end
-
-                        table.insert(rows, {
-                            card = card.Name,
-                            tenant = data.tenant,
-                            info = data.info,
-                            amount = data.amount,
-                            parseStatus = data.parseStatus,
-                            decision = decision,
-                            action = action,
-                            accFound = data.acc ~= nil,
-                            rejectFound = data.reject ~= nil
-                        })
-                    end
-                end
-            end
-        end
-
-        table.sort(rows, function(a, b) return a.card < b.card end)
-
-        local lines = {
-            "ONYX AUTO ACC ACTIVE TEST V1",
-            "MODE=ACTIVE GUI BUTTON ONLY | NO REMOTE",
-            "PLAYER=" .. tostring(player.Name),
-            "SCAN=" .. tostring(scanCount),
-            "TIME=" .. os.date("%Y-%m-%d %H:%M:%S"),
-            "RULE=AMOUNT > 20000000 TERIMA; <= 20000000 TOLAK",
-            "GUI_FOUND=" .. tostring(gui ~= nil),
-            "STACK_FOUND=" .. tostring(stack ~= nil),
-            "VISIBLE_RENT_CARDS=" .. tostring(visibleCards),
-            "ACTIONS_THIS_SCAN=" .. tostring(actionCount),
-            ""
-        }
-
-        for i, row in ipairs(rows) do
-            table.insert(lines, "[" .. tostring(i) .. "] " .. row.card)
-            table.insert(lines, "TENANT=" .. tostring(row.tenant))
-            table.insert(lines, "INFO_RAW=" .. tostring(row.info))
-            table.insert(lines, "AMOUNT_RP=" .. (row.amount and string.format("%.0f", row.amount) or "NIL"))
-            table.insert(lines, "PARSE_STATUS=" .. tostring(row.parseStatus))
-            table.insert(lines, "DECISION=" .. tostring(row.decision))
-            table.insert(lines, "ACTION=" .. tostring(row.action))
-            table.insert(lines, "ACCEPT_BUTTON_FOUND=" .. tostring(row.accFound))
-            table.insert(lines, "REJECT_BUTTON_FOUND=" .. tostring(row.rejectFound))
-            table.insert(lines, "")
-        end
-
-        if visibleCards == 0 then
-            table.insert(lines, "STATUS=MENUNGGU KARTU PERMINTAAN SEWA")
-        end
-
-        -- Auto ACC berjalan senyap: tidak membuat diagnosis, clipboard, atau log.
-    end
-end)

@@ -28,16 +28,6 @@ for i = 1, #encoded, 2 do
 end
 local wrapper = table.concat(decoded)
 
--- AUTO ACC PREFLIGHT: cek keberadaan fungsi, bukan menghitung marker di wrapper.
-assert(wrapper:find("-- AUTO ACC - FILTER NOMINAL SEWA", 1, true),
-    "AUTO ACC PREFLIGHT: blok filter tidak ditemukan")
-assert(wrapper:find("local function autoAccGetCards()", 1, true),
-    "AUTO ACC PREFLIGHT: scanner tidak ditemukan")
-assert(wrapper:find("local function autoAccClick(item)", 1, true),
-    "AUTO ACC PREFLIGHT: handler klik tidak ditemukan")
-assert(wrapper:find("local function autoAccParseAmount(value)", 1, true),
-    "AUTO ACC PREFLIGHT: parser tidak ditemukan")
-
 diagnosticStatus("CORE TERUNDUH - MENYIAPKAN PATCH...", false)
 
 -- Patch dilakukan setelah seluruh patch asli CORE RESTORE,
@@ -917,6 +907,16 @@ end
 ]==]
 
 wrapper = wrapper:sub(1, at - 1) .. patch .. "\n" .. wrapper:sub(at)
+
+-- AUTO ACC PREFLIGHT: cek keberadaan fungsi, bukan menghitung marker di wrapper.
+assert(wrapper:find("-- AUTO ACC - FILTER NOMINAL SEWA", 1, true),
+    "AUTO ACC PREFLIGHT: blok filter tidak ditemukan")
+assert(wrapper:find("local function autoAccGetCards()", 1, true),
+    "AUTO ACC PREFLIGHT: scanner tidak ditemukan")
+assert(wrapper:find("local function autoAccClick(item)", 1, true),
+    "AUTO ACC PREFLIGHT: handler klik tidak ditemukan")
+assert(wrapper:find("local function autoAccParseAmount(value)", 1, true),
+    "AUTO ACC PREFLIGHT: parser tidak ditemukan")
 
 diagnosticStatus("MENG-COMPILE WRAPPER...", false)
 local chunk, compileError = loadstring(wrapper)

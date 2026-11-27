@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-auto-acc-firesignal-fix-20261127"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-auto-acc-final-20261127"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -985,9 +985,11 @@ local function autoAccGetCards()
             local accept = body and body:FindFirstChild("AccBtn")
             local reject = body and body:FindFirstChild("TolakBtn")
 
+            local tagText = tagLabel and tostring(tagLabel.Text or "") or ""
+            local infoText = info and tostring(info.Text or "") or ""
             if tagLabel and info
-            and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
-                local amount = autoAccParseAmount(info.Text)
+            and string.find(string.upper(tagText), "PERMINTAAN SEWA", 1, true) ~= nil then
+                local amount = autoAccParseAmount(infoText)
                 -- Semua nominal valid harus masuk antrean:
                 -- > Rp20 juta = ACC, <= Rp20 juta = TOLAK.
                 if amount then
@@ -995,16 +997,11 @@ local function autoAccGetCards()
                     local target = decision == "TERIMA" and accept or reject
                     if target and target:IsA("GuiButton")
                     and target.Visible and target.Active then
-                        local pos = target.AbsolutePosition
-                        local size = target.AbsoluteSize
                         result[#result + 1] = {
                             card = card,
-                            button = target,
                             amount = amount,
-                            info = tostring(info.Text),
-                            decision = decision,
-                            x = pos.X + size.X / 2,
-                            y = pos.Y + size.Y / 2
+                            info = infoText,
+                            decision = decision
                         }
                     end
                 end
@@ -1028,8 +1025,9 @@ local function autoAccClick(item)
     local tag = body and body:FindFirstChild("Tag")
     local tagLabel = tag and tag:FindFirstChild("Label")
     local info = body and body:FindFirstChild("Info")
+    local liveTagText = tagLabel and tostring(tagLabel.Text or "") or ""
     if not body or not tagLabel or not info
-    or not tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
+    or string.find(string.upper(liveTagText), "PERMINTAAN SEWA", 1, true) == nil then
         return false
     end
 

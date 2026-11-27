@@ -945,7 +945,8 @@ local farmOK, farmError = pcall(function()
     if staleFarmGui then staleFarmGui:Destroy() end
     for _, child in ipairs(scroll:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
-        and child.Name ~= "FeatureSectionLabel" and child.Position.Y.Offset >= 116 then
+        and child.Name ~= "FeatureSectionLabel" and child.Name ~= "AutoAccButton"
+        and child.Position.Y.Offset >= 116 then
             child.Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset,
                 child.Position.Y.Scale, child.Position.Y.Offset + 160)
         end

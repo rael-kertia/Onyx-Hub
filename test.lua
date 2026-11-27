@@ -196,38 +196,19 @@ local function autoAccClick(item)
     if not shouldAccept then
         x = x - 8
     end
-    local point = Vector2.new(x, y)
-
+    -- API Roblox menerima touchId, state, X, Y sebagai EMPAT argumen.
+    -- Argumen Vector2 sebelumnya salah sehingga sentuhan gagal dikirim.
     local touchOK = pcall(function()
-        input:SendTouchEvent(0, Enum.UserInputState.Begin, point)
+        input:SendTouchEvent(0, Enum.UserInputState.Begin, x, y)
         task.wait(0.10)
-        input:SendTouchEvent(0, Enum.UserInputState.End, point)
+        input:SendTouchEvent(0, Enum.UserInputState.End, x, y)
+        input:WaitForInputEventsProcessed()
     end)
 
-    task.wait(0.45)
-    if not card.Parent or not card.Visible then
-        return true
-    end
-
-    -- Jika sentuh tidak memproses kartu, coba klik mouse pada koordinat
-    -- tombol yang SAMA. Validasi nominal dan nama tombol sekali lagi dahulu.
-    local retryText = tostring(info.Text or "")
-    local retryAmount = autoAccParseAmount(retryText)
-    if retryText ~= finalText or retryAmount ~= finalAmount
-    or not button.Parent or button.Name ~= expectedName
-    or not button.Visible or not button.Active then
+    if not touchOK then
         return false
     end
 
-    local mouseOK = pcall(function()
-        input:SendMouseMoveEvent(x, y, game)
-        task.wait(0.05)
-        input:SendMouseButtonEvent(x, y, 0, true, game, 1)
-        task.wait(0.08)
-        input:SendMouseButtonEvent(x, y, 0, false, game, 1)
-    end)
-
-    if not touchOK and not mouseOK then return false end
     task.wait(0.65)
     return not card.Parent or not card.Visible
 end

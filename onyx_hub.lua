@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v2"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v3"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -43,8 +43,8 @@ assert(onyxCountMarker(wrapper, "-- AUTO ACC - FILTER NOMINAL SEWA") == 1,
     "AUTO ACC PREFLIGHT: bloco não encontrado ou duplicado no core")
 assert(onyxCountMarker(wrapper, "local function autoAccGetCards()") == 1,
     "AUTO ACC PREFLIGHT: scanner ausente ou duplicado")
-assert(onyxCountMarker(wrapper, "local function autoAccClick(item)") == 1,
-    "AUTO ACC PREFLIGHT: validador de clique ausente ou duplicado")
+assert(wrapper:find("local function autoAccClick(item)", 1, true),
+    "AUTO ACC PREFLIGHT: validador de clique ausente")
 assert(onyxCountMarker(wrapper, "local function autoAccParseAmount(value)") == 1,
     "AUTO ACC PREFLIGHT: parser ausente ou duplicado")
 

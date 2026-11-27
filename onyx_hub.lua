@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v9"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v11"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -28,25 +28,15 @@ for i = 1, #encoded, 2 do
 end
 local wrapper = table.concat(decoded)
 
--- AUTO ACC PREFLIGHT: validar o payload já decodificado, antes de inserir patches.
-local function onyxCountMarker(text, marker)
-    local count, at = 0, 1
-    while true do
-        local found = text:find(marker, at, true)
-        if not found then break end
-        count = count + 1
-        at = found + #marker
-    end
-    return count
-end
-assert(onyxCountMarker(wrapper, "-- AUTO ACC - FILTER NOMINAL SEWA") >= 1,
-    "AUTO ACC PREFLIGHT: bloco não encontrado ou duplicado no core")
-assert(onyxCountMarker(wrapper, "local function autoAccGetCards()") >= 1,
-    "AUTO ACC PREFLIGHT: scanner ausente ou duplicado")
+-- AUTO ACC PREFLIGHT: cek keberadaan fungsi, bukan menghitung marker di wrapper.
+assert(wrapper:find("-- AUTO ACC - FILTER NOMINAL SEWA", 1, true),
+    "AUTO ACC PREFLIGHT: blok filter tidak ditemukan")
+assert(wrapper:find("local function autoAccGetCards()", 1, true),
+    "AUTO ACC PREFLIGHT: scanner tidak ditemukan")
 assert(wrapper:find("local function autoAccClick(item)", 1, true),
-    "AUTO ACC PREFLIGHT: validador de clique ausente")
-assert(onyxCountMarker(wrapper, "local function autoAccParseAmount(value)") >= 1,
-    "AUTO ACC PREFLIGHT: parser ausente ou duplicado")
+    "AUTO ACC PREFLIGHT: handler klik tidak ditemukan")
+assert(wrapper:find("local function autoAccParseAmount(value)", 1, true),
+    "AUTO ACC PREFLIGHT: parser tidak ditemukan")
 
 diagnosticStatus("CORE TERUNDUH - MENYIAPKAN PATCH...", false)
 

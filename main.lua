@@ -44,7 +44,7 @@ local autoAccAttempt = setmetatable({}, {__mode = "k"})
 local autoAccButton = Instance.new("TextButton")
 autoAccButton.Name = "AutoAccButton"
 autoAccButton.Size = UDim2.fromOffset(195, 27)
-autoAccButton.Position = UDim2.fromOffset(5, 132)
+autoAccButton.Position = UDim2.fromOffset(5, 190)
 autoAccButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
 autoAccButton.BorderSizePixel = 0
 autoAccButton.Text = "AUTO ACC: OFF"

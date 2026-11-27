@@ -2,7 +2,7 @@
 -- Loader diagnostics are intentionally silent; no status UI is shown.
 local function diagnosticStatus(message, failed)
     if failed then
-        local report = "ONYX FIX13: " .. tostring(message)
+        local report = "ONYX FIX15: " .. tostring(message)
         pcall(function() if setclipboard then setclipboard(report) end end)
         pcall(function() warn(report) end)
     end
@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v14"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261128-v15"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -367,13 +367,11 @@ local function getJamService()
     if not nk then error("NKSystem tidak ditemukan") end
     local packages = nk:WaitForChild("Packages", 15)
     if not packages then error("Packages tidak ditemukan") end
-    -- Samakan jalur pemuatan Knit dengan getGachaService() yang sudah ada.
-    local knitModule = packages:WaitForChild("Knit", 15)
-    if not knitModule then error("Knit tidak ditemukan di NKSystem.Packages") end
+    local knitFolder = packages:WaitForChild("Knit", 15)
+    if not knitFolder then error("Knit tidak ditemukan") end
+    local knitModule = knitFolder:WaitForChild("KnitClient", 15)
+    if not knitModule then error("KnitClient tidak ditemukan") end
     local Knit = require(knitModule)
-    if type(Knit) ~= "table" or type(Knit.GetService) ~= "function" then
-        error("MODUL KNIT TIDAK MENYEDIAKAN GetService")
-    end
     jamService = Knit.GetService("JamAjaibService")
     if not jamService then error("JamAjaibService tidak ditemukan") end
     return jamService

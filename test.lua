@@ -16,7 +16,18 @@ patch = patch .. [====[
 local autoAccInsertMarker = "local function updateButtons()"
 local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
 assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
+-- HAPUS JALUR AUTO ACC LEGACY.
+-- Versi lama selalu menekan AccBtn dengan VirtualInputManager tanpa filter nominal.
+-- Blok legacy berada sebelum blok Auto Gacha di source hasil decode.
+local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
+if legacyAutoAccStart then
+    local nextSourceBlock = source:find("-- AUTO GACHA - TERINTEGRASI KE GUI UTAMA", legacyAutoAccStart, true)
+    assert(nextSourceBlock, "AUTO ACC: batas akhir blok legacy tidak ditemukan")
+    source = source:sub(1, legacyAutoAccStart - 1) .. source:sub(nextSourceBlock)
+end
+
 local autoAccAlreadyInjected = source:find("AutoAccButton", 1, true) ~= nil
+assert(not autoAccAlreadyInjected, "AUTO ACC: instance legacy masih tertinggal setelah pembersihan")
 
 local autoAccInsert = [=[
 -- AUTO ACC - FILTER NOMINAL SEWA

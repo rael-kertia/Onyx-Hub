@@ -718,13 +718,19 @@ task.spawn(function()
 end)
 
 
--- ONYX AUTO ACC PASSIVE DIAGNOSTIC V1
--- Read-only: hanya membaca kartu permintaan sewa dan nominal.
--- Tidak pernah menekan AccBtn/TolakBtn atau memanggil remote.
+-- ONYX AUTO ACC ACTIVE TEST V1
+-- Aturan: nominal > Rp20.000.000 = TERIMA; selain itu = TOLAK.
+-- Hanya memakai tombol GUI AccBtn/TolakBtn; tidak memanggil remote.
 task.spawn(function()
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer
     local playerGui = player:WaitForChild("PlayerGui")
+    local processed = setmetatable({}, { __mode = "k" })
+    local scanCount = 0
+    local lastSignature = nil
+
+    getgenv().ONYX_AUTOACC_STOP = false
+    getgenv().ONYX_AUTOACC_STATUS = "ACTIVE"
 
     local function isVisible(object)
         local node = object
@@ -753,21 +759,16 @@ task.spawn(function()
         if suffix == "jt" or suffix == "juta" or suffix == "m" then
             local normalized = amountText:gsub(",", ".")
             local dots = select(2, normalized:gsub("%.", ""))
-            if dots > 1 then
-                normalized = normalized:gsub("%.", "")
-            end
+            if dots > 1 then normalized = normalized:gsub("%.", "") end
             number = tonumber(normalized)
             if number then number = number * 1000000 end
         elseif suffix == "rb" or suffix == "ribu" or suffix == "k" then
             local normalized = amountText:gsub(",", ".")
             local dots = select(2, normalized:gsub("%.", ""))
-            if dots > 1 then
-                normalized = normalized:gsub("%.", "")
-            end
+            if dots > 1 then normalized = normalized:gsub("%.", "") end
             number = tonumber(normalized)
             if number then number = number * 1000 end
         elseif suffix == "" then
-            -- Format nominal rupiah Indonesia: 20.000.000 atau 20,000,000.
             number = tonumber((amountText:gsub("[^%d]", "")))
         else
             return nil, "SUFFIX_TIDAK_DIKENAL:" .. suffix
@@ -779,114 +780,150 @@ task.spawn(function()
         return number, "OK"
     end
 
-    local lastReport = nil
-    local lastSignature = nil
-    local scanCount = 0
+    local function getCardData(card)
+        local body = card:FindFirstChild("Isi")
+        if not body then return nil end
+        local tag = body:FindFirstChild("Tag")
+        local tagLabel = tag and tag:FindFirstChild("Label")
+        local info = body:FindFirstChild("Info")
+        local nameLabel = body:FindFirstChild("NamaPenyewa")
+        local tagText = tagLabel and tagLabel.Text or ""
+        if not tagText:upper():find("PERMINTAAN SEWA", 1, true) then
+            return nil
+        end
+        local infoText = info and info.Text or ""
+        local amount, parseStatus = parseRentAmount(infoText)
+        return {
+            body = body,
+            tenant = nameLabel and nameLabel.Text or "TIDAK ADA",
+            info = infoText,
+            amount = amount,
+            parseStatus = parseStatus,
+            acc = body:FindFirstChild("AccBtn"),
+            reject = body:FindFirstChild("TolakBtn")
+        }
+    end
 
-    while task.wait(0.5) do
+    while task.wait(0.35) do
+        if getgenv().ONYX_AUTOACC_STOP then
+            getgenv().ONYX_AUTOACC_STATUS = "STOPPED"
+            break
+        end
+
         scanCount = scanCount + 1
         local gui = playerGui:FindFirstChild("PermintaanSewaUI")
         local stack = gui and gui:FindFirstChild("Tumpukan")
         local rows = {}
         local visibleCards = 0
+        local actionCount = 0
 
         if stack then
             for _, card in ipairs(stack:GetChildren()) do
                 if card.Name:match("^Kartu_%d+$") and isVisible(card) then
-                    local body = card:FindFirstChild("Isi")
-                    if body then
-                        local tag = body:FindFirstChild("Tag")
-                        local tagLabel = tag and tag:FindFirstChild("Label")
-                        local info = body:FindFirstChild("Info")
-                        local nameLabel = body:FindFirstChild("NamaPenyewa")
-                        local acc = body:FindFirstChild("AccBtn")
-                        local reject = body:FindFirstChild("TolakBtn")
-                        local tagText = tagLabel and tagLabel.Text or ""
-                        local infoText = info and info.Text or ""
-                        if tagText:upper():find("PERMINTAAN SEWA", 1, true) then
-                            visibleCards = visibleCards + 1
-                            local amount, parseStatus = parseRentAmount(infoText)
-                            table.insert(rows, {
-                                card = card.Name,
-                                tenant = nameLabel and nameLabel.Text or "TIDAK ADA",
-                                tag = tagText,
-                                info = infoText,
-                                amount = amount,
-                                parseStatus = parseStatus,
-                                accFound = acc ~= nil,
-                                rejectFound = reject ~= nil
-                            })
+                    local data = getCardData(card)
+                    if data then
+                        visibleCards = visibleCards + 1
+                        local decision = data.amount and (data.amount > 20000000 and "TERIMA" or "TOLAK") or "TIDAK ADA - NOMINAL GAGAL DIBACA"
+                        local fingerprint = table.concat({
+                            tostring(data.tenant), tostring(data.info),
+                            tostring(data.amount), tostring(decision)
+                        }, "|")
+                        local action = "MENUNGGU"
+
+                        if not data.amount then
+                            action = "DILEWATI - NOMINAL GAGAL DIBACA"
+                        elseif processed[card] == fingerprint then
+                            action = "SUDAH DIPROSES"
+                        else
+                            local target = data.amount > 20000000 and data.acc or data.reject
+                            if not target or not target:IsA("GuiButton") then
+                                action = data.amount > 20000000 and "GAGAL - ACCBTN TIDAK DITEMUKAN" or "GAGAL - TOLAKBTN TIDAK DITEMUKAN"
+                            elseif not isVisible(target) or not card.Parent then
+                                action = "GAGAL - TOMBOL/KARTU TIDAK AKTIF"
+                            else
+                                -- Validasi ulang nominal tepat sebelum tombol ditekan.
+                                local fresh = getCardData(card)
+                                if not fresh or not fresh.amount then
+                                    action = "DILEWATI - VALIDASI ULANG GAGAL"
+                                else
+                                    local freshDecision = fresh.amount > 20000000 and "TERIMA" or "TOLAK"
+                                    local freshTarget = fresh.amount > 20000000 and fresh.acc or fresh.reject
+                                    if freshDecision ~= decision or fresh.info ~= data.info or not freshTarget or not isVisible(freshTarget) then
+                                        action = "DILEWATI - DATA BERUBAH SAAT VALIDASI"
+                                    else
+                                        local ok, err = pcall(function()
+                                            freshTarget:Activate()
+                                        end)
+                                        if ok then
+                                            processed[card] = fingerprint
+                                            action = "BERHASIL KLIK " .. freshDecision
+                                            actionCount = actionCount + 1
+                                        else
+                                            action = "GAGAL KLIK: " .. tostring(err)
+                                        end
+                                    end
+                                end
+                            end
                         end
+
+                        table.insert(rows, {
+                            card = card.Name,
+                            tenant = data.tenant,
+                            info = data.info,
+                            amount = data.amount,
+                            parseStatus = data.parseStatus,
+                            decision = decision,
+                            action = action,
+                            accFound = data.acc ~= nil,
+                            rejectFound = data.reject ~= nil
+                        })
                     end
                 end
             end
         end
 
-        table.sort(rows, function(a, b)
-            return a.card < b.card
-        end)
+        table.sort(rows, function(a, b) return a.card < b.card end)
 
         local lines = {
-            "ONYX AUTO ACC PASSIVE DIAGNOSTIC V1",
-            "MODE=READ ONLY | NO CLICK | NO REMOTE",
+            "ONYX AUTO ACC ACTIVE TEST V1",
+            "MODE=ACTIVE GUI BUTTON ONLY | NO REMOTE",
             "PLAYER=" .. tostring(player.Name),
             "SCAN=" .. tostring(scanCount),
             "TIME=" .. os.date("%Y-%m-%d %H:%M:%S"),
+            "RULE=AMOUNT > 20000000 TERIMA; <= 20000000 TOLAK",
             "GUI_FOUND=" .. tostring(gui ~= nil),
             "STACK_FOUND=" .. tostring(stack ~= nil),
             "VISIBLE_RENT_CARDS=" .. tostring(visibleCards),
+            "ACTIONS_THIS_SCAN=" .. tostring(actionCount),
             ""
         }
 
         for i, row in ipairs(rows) do
             table.insert(lines, "[" .. tostring(i) .. "] " .. row.card)
             table.insert(lines, "TENANT=" .. tostring(row.tenant))
-            table.insert(lines, "TAG=" .. tostring(row.tag))
             table.insert(lines, "INFO_RAW=" .. tostring(row.info))
             table.insert(lines, "AMOUNT_RP=" .. (row.amount and string.format("%.0f", row.amount) or "NIL"))
             table.insert(lines, "PARSE_STATUS=" .. tostring(row.parseStatus))
-            table.insert(lines, "DECISION_PREVIEW=" .. (row.amount and (row.amount > 20000000 and "TERIMA" or "TOLAK") or "TIDAK ADA - NOMINAL GAGAL DIBACA"))
+            table.insert(lines, "DECISION=" .. tostring(row.decision))
+            table.insert(lines, "ACTION=" .. tostring(row.action))
             table.insert(lines, "ACCEPT_BUTTON_FOUND=" .. tostring(row.accFound))
             table.insert(lines, "REJECT_BUTTON_FOUND=" .. tostring(row.rejectFound))
             table.insert(lines, "")
         end
 
         if visibleCards == 0 then
-            table.insert(lines, "STATUS=MENUNGGU KARTU PERMINTAAN SEWA YANG TERLIHAT")
+            table.insert(lines, "STATUS=MENUNGGU KARTU PERMINTAAN SEWA")
         end
 
         local report = table.concat(lines, "\n")
-        local signature = table.concat({
-            tostring(gui ~= nil),
-            tostring(stack ~= nil),
-            tostring(visibleCards),
-            table.concat((function()
-                local values = {}
-                for _, row in ipairs(rows) do
-                    table.insert(values, table.concat({
-                        row.card, row.tenant, row.info,
-                        tostring(row.amount), row.parseStatus,
-                        tostring(row.accFound), tostring(row.rejectFound)
-                    }, "|"))
-                end
-                return values
-            end)(), "\n")
-        }, "|")
-
-        -- Salin hanya ketika isi diagnosis berubah agar clipboard tidak terus
-        -- ditimpa setiap setengah detik.
+        local signature = report
         if signature ~= lastSignature then
             lastSignature = signature
-            lastReport = report
             pcall(function()
-                if typeof(setclipboard) == "function" then
-                    setclipboard(report)
-                end
+                if typeof(setclipboard) == "function" then setclipboard(report) end
             end)
             pcall(function() warn(report) end)
-            pcall(function()
-                getgenv().ONYX_AUTOACC_DIAG = report
-            end)
+            pcall(function() getgenv().ONYX_AUTOACC_REPORT = report end)
         end
     end
 end)

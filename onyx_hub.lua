@@ -896,6 +896,294 @@ do
     UserInputService.InputChanged:Connect(updateWindowDrag)
     UserInputService.TouchMoved:Connect(updateWindowDrag)
 end
+
+
+-- AUTO ACC PORT DARI TEST.LUA YANG SUDAH TERUJI
+-- AUTO ACC: sisipkan ke source GUI pada anchor yang benar.
+-- Core asli tidak memiliki blok Auto ACC lama untuk diganti.
+local autoAccInsertMarker = "local function updateButtons()"
+local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
+assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
+-- HAPUS JALUR AUTO ACC LEGACY.
+-- Versi lama selalu menekan AccBtn dengan VirtualInputManager tanpa filter nominal.
+-- Blok legacy berada sebelum blok Auto Gacha di source hasil decode.
+local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
+if legacyAutoAccStart then
+    local nextSourceBlock = source:find("-- AUTO GACHA - TERINTEGRASI KE GUI UTAMA", legacyAutoAccStart, true)
+    assert(nextSourceBlock, "AUTO ACC: batas akhir blok legacy tidak ditemukan")
+    source = source:sub(1, legacyAutoAccStart - 1) .. source:sub(nextSourceBlock)
+end
+
+local autoAccAlreadyInjected = source:find("AutoAccButton", 1, true) ~= nil
+assert(not autoAccAlreadyInjected, "AUTO ACC: instance legacy masih tertinggal setelah pembersihan")
+
+local autoAccInsert = [=[
+-- AUTO ACC - FILTER NOMINAL SEWA
+frame.Size = UDim2.fromOffset(205, 150)
+status.Position = UDim2.fromOffset(5, 123)
+
+local autoAccEnabled = false
+local autoAccBusy = false
+local autoAccDone = setmetatable({}, {__mode = "k"})
+local autoAccAttempt = setmetatable({}, {__mode = "k"})
+
+local autoAccButton = Instance.new("TextButton")
+autoAccButton.Name = "AutoAccButton"
+autoAccButton.Size = UDim2.fromOffset(195, 27)
+autoAccButton.Position = UDim2.fromOffset(5, 86)
+autoAccButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
+autoAccButton.BorderSizePixel = 0
+autoAccButton.Text = "AUTO ACC: OFF"
+autoAccButton.TextColor3 = Color3.fromRGB(248, 250, 252)
+autoAccButton.TextSize = 10
+autoAccButton.Font = Enum.Font.GothamBold
+autoAccButton.Parent = frame
+Instance.new("UICorner", autoAccButton).CornerRadius = UDim.new(0, 6)
+
+local function setAutoAcc(enabled)
+    autoAccEnabled = enabled
+    autoAccButton.Text = enabled and "AUTO ACC: ON" or "AUTO ACC: OFF"
+    autoAccButton.BackgroundColor3 = enabled
+        and Color3.fromRGB(5, 150, 105)
+        or Color3.fromRGB(127, 29, 29)
+    setStatus(enabled and "AUTO ACC AKTIF | BATAS RP20 JUTA"
+        or "AUTO ACC NONAKTIF")
+end
+
+connect(autoAccButton.Activated, function()
+    if alive() then setAutoAcc(not autoAccEnabled) end
+end)
+
+local function autoAccParseAmount(value)
+    local raw = tostring(value or "")
+    local amount = raw:match("[Rr][Pp]%s*%.?%s*([%d][%d%.,]*)")
+    if not amount then return nil end
+    local digits = amount:gsub("[^%d]", "")
+    if digits == "" then return nil end
+    return tonumber(digits)
+end
+
+local function autoAccGetCards()
+    local result = {}
+    local requestUI = playerGui:FindFirstChild("PermintaanSewaUI")
+    if not requestUI then return result end
+    if requestUI:IsA("ScreenGui") and not requestUI.Enabled then
+        return result
+    end
+
+    local stack = requestUI:FindFirstChild("Tumpukan", true)
+    if not stack then return result end
+
+    for _, card in ipairs(stack:GetChildren()) do
+        if card.Name:match("^Kartu_%d+$") and card.Visible then
+            local body = card:FindFirstChild("Isi")
+            local tag = body and body:FindFirstChild("Tag")
+            local tagLabel = tag and tag:FindFirstChild("Label")
+            local info = body and body:FindFirstChild("Info")
+            local accept = body and body:FindFirstChild("AccBtn")
+            local reject = body and body:FindFirstChild("TolakBtn")
+
+            if tagLabel and info
+            and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
+                local amount = autoAccParseAmount(info.Text)
+                -- Semua nominal valid harus masuk antrean:
+                -- > Rp20 juta = ACC, <= Rp20 juta = TOLAK.
+                if amount then
+                    local decision = amount > 20000000 and "TERIMA" or "TOLAK"
+                    local target = decision == "TERIMA" and accept or reject
+                    if target and target:IsA("GuiButton")
+                    and target.Visible and target.Active then
+                        local pos = target.AbsolutePosition
+                        local size = target.AbsoluteSize
+                        result[#result + 1] = {
+                            card = card,
+                            button = target,
+                            amount = amount,
+                            info = tostring(info.Text),
+                            decision = decision,
+                            x = pos.X + size.X / 2,
+                            y = pos.Y + size.Y / 2
+                        }
+                    end
+                end
+            end
+        end
+    end
+
+    table.sort(result, function(a, b) return a.y < b.y end)
+    return result
+end
+
+local function autoAccClick(item)
+    -- Jangan pernah memakai referensi tombol atau nominal dari hasil scan lama.
+    -- Baca ulang isi kartu dan cari tombol langsung dari kartu yang masih aktif.
+    local card = item and item.card
+    if not card or not card.Parent or not card.Visible then
+        return false
+    end
+
+    local body = card:FindFirstChild("Isi")
+    local tag = body and body:FindFirstChild("Tag")
+    local tagLabel = tag and tag:FindFirstChild("Label")
+    local info = body and body:FindFirstChild("Info")
+    if not body or not tagLabel or not info
+    or not tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
+        return false
+    end
+
+    -- Parse teks live, bukan cache. Tidak ada nominal = tidak ada aksi.
+    local liveText = tostring(info.Text or "")
+    local liveAmount = autoAccParseAmount(liveText)
+    if not liveAmount or liveAmount ~= item.amount
+    or liveText ~= item.info then
+        return false
+    end
+
+    local shouldAccept = liveAmount > 20000000
+    local expectedName = shouldAccept and "AccBtn" or "TolakBtn"
+    local forbiddenName = shouldAccept and "TolakBtn" or "AccBtn"
+
+    local accept = body:FindFirstChild("AccBtn")
+    local reject = body:FindFirstChild("TolakBtn")
+    local button = shouldAccept and accept or reject
+
+    -- Fail closed: tombol target wajib tepat, tombol lawan wajib berbeda.
+    if not button or button == (shouldAccept and reject or accept)
+    or button.Name ~= expectedName
+    or not button:IsA("GuiButton")
+    or not button.Parent or button.Parent ~= body
+    or not button.Visible or not button.Active
+    or (button.Name == forbiddenName) then
+        return false
+    end
+
+    -- Pemeriksaan terakhir tepat sebelum Activate untuk mencegah kartu berubah.
+    local finalText = tostring(info.Text or "")
+    local finalAmount = autoAccParseAmount(finalText)
+    if finalText ~= liveText or finalAmount ~= liveAmount
+    or ((finalAmount > 20000000) ~= (button.Name == "AccBtn")) then
+        return false
+    end
+
+    -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
+    -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
+    local input = game:GetService("VirtualInputManager")
+    -- Posisi ACC mengikuti titik tengah AccBtn seperti jalur klik lama.
+    -- TOLAK memakai titik tengah tombolnya sendiri, digeser sedikit ke kiri.
+    local acceptButton = body:FindFirstChild("AccBtn")
+    if not acceptButton or not acceptButton:IsA("GuiButton")
+    or not acceptButton.Visible then
+        return false
+    end
+
+    local clickButton = shouldAccept and acceptButton or button
+    local pos = clickButton.AbsolutePosition
+    local size = clickButton.AbsoluteSize
+    local x = pos.X + size.X / 2
+    local y = pos.Y + size.Y / 2
+    if not shouldAccept then
+        x = x - 8
+    end
+    -- Utamakan event tombol langsung: tidak bergantung pada posisi kursor.
+    -- Jika executor tidak menyediakan firesignal, gunakan GuiButton:Activate().
+    local fired = false
+
+    if typeof(firesignal) == "function" then
+        local ok = pcall(function()
+            firesignal(button.Activated)
+        end)
+        fired = ok
+    end
+
+    if not fired then
+        local ok = pcall(function()
+            button:Activate()
+        end)
+        fired = ok
+    end
+
+    if fired then
+        task.wait(0.45)
+        if not card.Parent or not card.Visible then
+            return true
+        end
+    end
+
+    -- Fallback event MouseButton1Click untuk GUI yang memakai event lama.
+    if card.Parent and card.Visible and button.Parent and button.Visible then
+        if typeof(firesignal) == "function" then
+            pcall(function()
+                firesignal(button.MouseButton1Click)
+            end)
+            task.wait(0.65)
+        end
+    end
+
+    return not card.Parent or not card.Visible
+end
+
+task.spawn(function()
+    while alive() and gui.Parent do
+        if autoAccEnabled and not autoAccBusy then
+            local cards = autoAccGetCards()
+            local processed = false
+
+            -- Tidak mensyaratkan jumlah kartu minimum. Satu kartu maupun
+            -- dua kartu diproses dengan scan ulang setelah setiap aksi.
+            for _, item in ipairs(cards) do
+                local fingerprint = item.info .. "|" .. tostring(item.amount)
+                    .. "|" .. item.decision
+                local now = os.clock()
+
+                if autoAccDone[item.card] ~= fingerprint
+                and (not autoAccAttempt[item.card]
+                    or now - autoAccAttempt[item.card] >= 3) then
+                    autoAccBusy = true
+                    autoAccAttempt[item.card] = now
+
+                    local valid
+                    for _, current in ipairs(autoAccGetCards()) do
+                        if current.card == item.card
+                        and current.amount == item.amount
+                        and current.decision == item.decision
+                        and current.info == item.info then
+                            valid = current
+                            break
+                        end
+                    end
+
+                    if valid then
+                        local clicked = autoAccClick(valid)
+                        if clicked then
+                            autoAccDone[item.card] = fingerprint
+                            setStatus("AUTO ACC " .. valid.decision
+                                .. " | RP " .. tostring(valid.amount))
+                        else
+                            setStatus("AUTO ACC: KLIK BELUM TERKONFIRMASI")
+                        end
+                    end
+
+                    autoAccBusy = false
+                    processed = true
+                    break
+                end
+            end
+
+            if processed then
+                -- Beri UI waktu menyusun ulang kartu, lalu scan ulang dari awal.
+                task.wait(0.35)
+            end
+        end
+        task.wait(0.15)
+    end
+end)
+]=]
+
+if not autoAccAlreadyInjected then
+    source = source:sub(1, autoAccInsertAt - 1)
+        .. autoAccInsert .. "\n"
+        .. source:sub(autoAccInsertAt)
+end
 ]====]
 
 ]==]

@@ -1061,7 +1061,7 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Pemeriksaan terakhir tepat sebelum Activate untuk mencegah kartu berubah.
+    -- Pemeriksaan terakhir tepat sebelum mengirim event tombol.
     local finalText = tostring(info.Text or "")
     local finalAmount = autoAccParseAmount(finalText)
     if finalText ~= liveText or finalAmount ~= liveAmount
@@ -1070,7 +1070,7 @@ local function autoAccClick(item)
     end
 
     -- Satu-satunya metode klik: event Activated melalui firesignal.
-    -- Tidak ada VirtualInputManager, koordinat, touch, Activate(), atau MouseButton1Click.
+    -- Pengiriman event tombol dilakukan langsung, tanpa simulasi input perangkat.
     if typeof(firesignal) ~= "function" then
         return false
     end

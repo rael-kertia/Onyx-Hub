@@ -11,6 +11,17 @@ local onyxHomeworkPathfindingMarker = "wrapper = wrapper:sub(1, at - 1) .. patch
 local onyxHomeworkPathfindingPatch = [==[
 
 patch = patch .. [====[
+-- NONAKTIFKAN AUTO ACC LAMA DI CORE.
+-- Versi lama selalu menekan AccBtn tanpa memeriksa nominal.
+local legacyAccButtonMarker = "autoAccButton.Parent = frame"
+assert(source:find(legacyAccButtonMarker, 1, true),
+    "AUTO ACC LAMA: marker tombol tidak ditemukan")
+source = source:gsub(
+    legacyAccButtonMarker,
+    legacyAccButtonMarker .. "\nautoAccButton.Visible = false",
+    1
+)
+
 -- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.
 -- Aksi TrashBag (Ambil/Buang) tetap memakai TP lama.
 local function onyxHomeworkReplaceBetween(text, firstMarker, nextMarker, replacement)

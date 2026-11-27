@@ -1071,60 +1071,20 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
-    -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
-    local input = game:GetService("VirtualInputManager")
-    -- Posisi ACC mengikuti titik tengah AccBtn seperti jalur klik lama.
-    -- TOLAK memakai titik tengah tombolnya sendiri, digeser sedikit ke kiri.
-    local acceptButton = body:FindFirstChild("AccBtn")
-    if not acceptButton or not acceptButton:IsA("GuiButton")
-    or not acceptButton.Visible then
+    -- Metode klik tunggal sesuai ketentuan: firesignal pada Activated.
+    -- Tidak ada VirtualInputManager, Activate(), atau MouseButton1Click.
+    if typeof(firesignal) ~= "function" then
         return false
     end
 
-    local clickButton = shouldAccept and acceptButton or button
-    local pos = clickButton.AbsolutePosition
-    local size = clickButton.AbsoluteSize
-    local x = pos.X + size.X / 2
-    local y = pos.Y + size.Y / 2
-    if not shouldAccept then
-        x = x - 8
-    end
-    -- Utamakan event tombol langsung: tidak bergantung pada posisi kursor.
-    -- Jika executor tidak menyediakan firesignal, gunakan GuiButton:Activate().
-    local fired = false
-
-    if typeof(firesignal) == "function" then
-        local ok = pcall(function()
-            firesignal(button.Activated)
-        end)
-        fired = ok
-    end
-
+    local fired = pcall(function()
+        firesignal(button.Activated)
+    end)
     if not fired then
-        local ok = pcall(function()
-            button:Activate()
-        end)
-        fired = ok
+        return false
     end
 
-    if fired then
-        task.wait(0.45)
-        if not card.Parent or not card.Visible then
-            return true
-        end
-    end
-
-    -- Fallback event MouseButton1Click untuk GUI yang memakai event lama.
-    if card.Parent and card.Visible and button.Parent and button.Visible then
-        if typeof(firesignal) == "function" then
-            pcall(function()
-                firesignal(button.MouseButton1Click)
-            end)
-            task.wait(0.65)
-        end
-    end
-
+    task.wait(0.45)
     return not card.Parent or not card.Visible
 end
 

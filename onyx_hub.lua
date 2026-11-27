@@ -946,29 +946,25 @@ local farmOK, farmError = pcall(function()
     for _, child in ipairs(scroll:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
         and child.Name ~= "FeatureSectionLabel"
+        and child.Name ~= "AutoAccButton"
         and child.Position.Y.Offset >= 116 then
             child.Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset,
                 child.Position.Y.Scale, child.Position.Y.Offset + 160)
         end
     end
 
-    -- Keep Auto ACC visible below the three Farm controls.
+    -- Auto ACC tetap pada posisi hasil layout core (Y=149).
+    -- Jangan pindahkan atau mengubah ukuran tombol inti.
     local autoAccControl = scroll:FindFirstChild("AutoAccButton", true)
     assert(autoAccControl and autoAccControl:IsA("TextButton"),
         "AUTO ACC BUTTON TIDAK DITEMUKAN DI FEATURESCROLL")
-    autoAccControl.Parent = scroll
-    autoAccControl.Position = UDim2.fromOffset(12, 426)
-    autoAccControl.Size = UDim2.new(1, -24, 0, 36)
-    autoAccControl.Visible = true
-    autoAccControl.Active = true
-    autoAccControl.ZIndex = 30
-    autoAccControl.BackgroundColor3 = Color3.fromRGB(22, 65, 72)
-    autoAccControl.TextColor3 = Color3.fromRGB(225, 245, 250)
+    assert(autoAccControl.Parent == scroll,
+        "AUTO ACC BUTTON TIDAK BERADA LANGSUNG DI FEATURESCROLL")
 
     local farmSection = Instance.new("TextLabel")
     farmSection.Name = "FarmSectionHeader"
     farmSection.Size = UDim2.new(1, -24, 0, 20)
-    farmSection.Position = UDim2.fromOffset(12, 116)
+    farmSection.Position = UDim2.fromOffset(12, 200)
     farmSection.BackgroundTransparency = 1
     farmSection.Text = "FARM AUTOMATION"
     farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
@@ -999,9 +995,9 @@ local farmOK, farmError = pcall(function()
         stroke.Parent = button
         return button
     end
-    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 140, Color3.fromRGB(34, 94, 75))
-    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 182, Color3.fromRGB(44, 83, 128))
-    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 224, Color3.fromRGB(113, 77, 39))
+    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 224, Color3.fromRGB(34, 94, 75))
+    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 266, Color3.fromRGB(44, 83, 128))
+    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 308, Color3.fromRGB(113, 77, 39))
     -- Canvas harus mengikuti seluruh isi menu; jangan dipatok 420px.
     -- Konten dashboard + tombol Farm bisa lebih panjang dari tinggi panel.
     scroll.ScrollingDirection = Enum.ScrollingDirection.Y

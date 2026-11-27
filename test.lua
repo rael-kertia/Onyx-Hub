@@ -87,11 +87,10 @@ local function autoAccGetCards()
             if tagLabel and info
             and tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
                 local amount = autoAccParseAmount(info.Text)
-                -- FAIL-CLOSED: jangan sentuh kartu <= Rp20.000.000.
-                -- Pemetaan aksi tombol game belum terbukti; lebih aman biarkan
-                -- permintaan nominal rendah tetap menunggu daripada salah ACC.
-                if amount and amount > 20000000 then
-                    local decision = "TERIMA"
+                -- Semua nominal valid harus masuk antrean:
+                -- > Rp20 juta = ACC, <= Rp20 juta = TOLAK.
+                if amount then
+                    local decision = amount > 20000000 and "TERIMA" or "TOLAK"
                     local target = decision == "TERIMA" and accept or reject
                     if target and target:IsA("GuiButton")
                     and target.Visible and target.Active then

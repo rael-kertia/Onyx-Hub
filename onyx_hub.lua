@@ -951,6 +951,20 @@ local farmOK, farmError = pcall(function()
                 child.Position.Y.Scale, child.Position.Y.Offset + 160)
         end
     end
+
+    -- Keep Auto ACC visible below the three Farm controls.
+    local autoAccControl = scroll:FindFirstChild("AutoAccButton", true)
+    assert(autoAccControl and autoAccControl:IsA("TextButton"),
+        "AUTO ACC BUTTON TIDAK DITEMUKAN DI FEATURESCROLL")
+    autoAccControl.Parent = scroll
+    autoAccControl.Position = UDim2.fromOffset(12, 426)
+    autoAccControl.Size = UDim2.new(1, -24, 0, 36)
+    autoAccControl.Visible = true
+    autoAccControl.Active = true
+    autoAccControl.ZIndex = 30
+    autoAccControl.BackgroundColor3 = Color3.fromRGB(22, 65, 72)
+    autoAccControl.TextColor3 = Color3.fromRGB(225, 245, 250)
+
     local farmSection = Instance.new("TextLabel")
     farmSection.Name = "FarmSectionHeader"
     farmSection.Size = UDim2.new(1, -24, 0, 20)

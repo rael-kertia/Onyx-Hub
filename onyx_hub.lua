@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-preserve-auto-acc-v5-20261127"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix13-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -130,7 +130,7 @@ local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
     assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
     local b = text:find(nextMarker, a + #firstMarker, true)
     assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)
-    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
+    return text:sub(1, a - 1) .. replacement .. "\\n\\n" .. text:sub(b)
 end
 
 local onyxGachaNative = [=[
@@ -896,10 +896,6 @@ do
     UserInputService.InputChanged:Connect(updateWindowDrag)
     UserInputService.TouchMoved:Connect(updateWindowDrag)
 end
-
-
--- AUTO ACC is embedded directly in main_obfuscated.lua.
-
 ]====]
 
 ]==]
@@ -945,26 +941,15 @@ local farmOK, farmError = pcall(function()
     if staleFarmGui then staleFarmGui:Destroy() end
     for _, child in ipairs(scroll:GetChildren()) do
         if child:IsA("GuiObject") and child.Name ~= "OnyxDashboardHero"
-        and child.Name ~= "FeatureSectionLabel"
-        and child.Name ~= "AutoAccButton"
-        and child.Position.Y.Offset >= 116 then
+        and child.Name ~= "FeatureSectionLabel" and child.Position.Y.Offset >= 116 then
             child.Position = UDim2.new(child.Position.X.Scale, child.Position.X.Offset,
                 child.Position.Y.Scale, child.Position.Y.Offset + 160)
         end
     end
-
-    -- Auto ACC tetap pada posisi hasil layout core (Y=149).
-    -- Jangan pindahkan atau mengubah ukuran tombol inti.
-    local autoAccControl = scroll:FindFirstChild("AutoAccButton", true)
-    assert(autoAccControl and autoAccControl:IsA("TextButton"),
-        "AUTO ACC BUTTON TIDAK DITEMUKAN DI FEATURESCROLL")
-    assert(autoAccControl.Parent == scroll,
-        "AUTO ACC BUTTON TIDAK BERADA LANGSUNG DI FEATURESCROLL")
-
     local farmSection = Instance.new("TextLabel")
     farmSection.Name = "FarmSectionHeader"
     farmSection.Size = UDim2.new(1, -24, 0, 20)
-    farmSection.Position = UDim2.fromOffset(12, 200)
+    farmSection.Position = UDim2.fromOffset(12, 116)
     farmSection.BackgroundTransparency = 1
     farmSection.Text = "FARM AUTOMATION"
     farmSection.TextColor3 = Color3.fromRGB(104, 220, 195)
@@ -995,9 +980,9 @@ local farmOK, farmError = pcall(function()
         stroke.Parent = button
         return button
     end
-    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 224, Color3.fromRGB(34, 94, 75))
-    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 266, Color3.fromRGB(44, 83, 128))
-    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 308, Color3.fromRGB(113, 77, 39))
+    local autoFarmButton = createFarmToggle("AutoFarm", "AUTO FARM", 140, Color3.fromRGB(34, 94, 75))
+    local autoFeedButton = createFarmToggle("AutoFeed", "AUTO FEED", 182, Color3.fromRGB(44, 83, 128))
+    local autoConvertButton = createFarmToggle("AutoConvert", "AUTO CONVERT", 224, Color3.fromRGB(113, 77, 39))
     -- Canvas harus mengikuti seluruh isi menu; jangan dipatok 420px.
     -- Konten dashboard + tombol Farm bisa lebih panjang dari tinggi panel.
     scroll.ScrollingDirection = Enum.ScrollingDirection.Y

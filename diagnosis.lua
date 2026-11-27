@@ -21,7 +21,7 @@ local function describe(signal)
     local parts = {"count=" .. #list}
     for i, c in ipairs(list) do
         if i > 4 then parts[#parts+1] = "..." break end
-        local fn = c.Function or c.function
+        local fn = c.Function or c["function"]
         local src, name = "?", "?"
         if type(fn) == "function" and debug and debug.info then
             pcall(function() src = debug.info(fn, "s") or "?" end)

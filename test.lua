@@ -716,3 +716,176 @@ task.spawn(function()
         pcall(function() warn(report) end)
     end
 end)
+
+
+-- ONYX AUTO ACC PASSIVE DIAGNOSTIC V1
+-- Read-only: hanya membaca kartu permintaan sewa dan nominal.
+-- Tidak pernah menekan AccBtn/TolakBtn atau memanggil remote.
+task.spawn(function()
+    local Players = game:GetService("Players")
+    local player = Players.LocalPlayer
+    local playerGui = player:WaitForChild("PlayerGui")
+
+    local function isVisible(object)
+        local node = object
+        while node do
+            if node:IsA("GuiObject") and not node.Visible then
+                return false
+            end
+            if node:IsA("ScreenGui") and not node.Enabled then
+                return false
+            end
+            node = node.Parent
+        end
+        return true
+    end
+
+    local function parseRentAmount(infoText)
+        local raw = tostring(infoText or "")
+        local amountText, suffix = raw:match("[Rr][Pp]%s*([%d][%d%.,]*)%s*([%a]*)")
+        if not amountText then
+            return nil, "NOMINAL_RP_TIDAK_DITEMUKAN"
+        end
+
+        suffix = (suffix or ""):lower()
+        local number
+
+        if suffix == "jt" or suffix == "juta" or suffix == "m" then
+            local normalized = amountText:gsub(",", ".")
+            local dots = select(2, normalized:gsub("%.", ""))
+            if dots > 1 then
+                normalized = normalized:gsub("%.", "")
+            end
+            number = tonumber(normalized)
+            if number then number = number * 1000000 end
+        elseif suffix == "rb" or suffix == "ribu" or suffix == "k" then
+            local normalized = amountText:gsub(",", ".")
+            local dots = select(2, normalized:gsub("%.", ""))
+            if dots > 1 then
+                normalized = normalized:gsub("%.", "")
+            end
+            number = tonumber(normalized)
+            if number then number = number * 1000 end
+        elseif suffix == "" then
+            -- Format nominal rupiah Indonesia: 20.000.000 atau 20,000,000.
+            number = tonumber((amountText:gsub("[^%d]", "")))
+        else
+            return nil, "SUFFIX_TIDAK_DIKENAL:" .. suffix
+        end
+
+        if not number then
+            return nil, "GAGAL_PARSE:" .. amountText .. suffix
+        end
+        return number, "OK"
+    end
+
+    local lastReport = nil
+    local lastSignature = nil
+    local scanCount = 0
+
+    while task.wait(0.5) do
+        scanCount = scanCount + 1
+        local gui = playerGui:FindFirstChild("PermintaanSewaUI")
+        local stack = gui and gui:FindFirstChild("Tumpukan")
+        local rows = {}
+        local visibleCards = 0
+
+        if stack then
+            for _, card in ipairs(stack:GetChildren()) do
+                if card.Name:match("^Kartu_%d+$") and isVisible(card) then
+                    local body = card:FindFirstChild("Isi")
+                    if body then
+                        local tag = body:FindFirstChild("Tag")
+                        local tagLabel = tag and tag:FindFirstChild("Label")
+                        local info = body:FindFirstChild("Info")
+                        local nameLabel = body:FindFirstChild("NamaPenyewa")
+                        local acc = body:FindFirstChild("AccBtn")
+                        local reject = body:FindFirstChild("TolakBtn")
+                        local tagText = tagLabel and tagLabel.Text or ""
+                        local infoText = info and info.Text or ""
+                        if tagText:upper():find("PERMINTAAN SEWA", 1, true) then
+                            visibleCards = visibleCards + 1
+                            local amount, parseStatus = parseRentAmount(infoText)
+                            table.insert(rows, {
+                                card = card.Name,
+                                tenant = nameLabel and nameLabel.Text or "TIDAK ADA",
+                                tag = tagText,
+                                info = infoText,
+                                amount = amount,
+                                parseStatus = parseStatus,
+                                accFound = acc ~= nil,
+                                rejectFound = reject ~= nil
+                            })
+                        end
+                    end
+                end
+            end
+        end
+
+        table.sort(rows, function(a, b)
+            return a.card < b.card
+        end)
+
+        local lines = {
+            "ONYX AUTO ACC PASSIVE DIAGNOSTIC V1",
+            "MODE=READ ONLY | NO CLICK | NO REMOTE",
+            "PLAYER=" .. tostring(player.Name),
+            "SCAN=" .. tostring(scanCount),
+            "TIME=" .. os.date("%Y-%m-%d %H:%M:%S"),
+            "GUI_FOUND=" .. tostring(gui ~= nil),
+            "STACK_FOUND=" .. tostring(stack ~= nil),
+            "VISIBLE_RENT_CARDS=" .. tostring(visibleCards),
+            ""
+        }
+
+        for i, row in ipairs(rows) do
+            table.insert(lines, "[" .. tostring(i) .. "] " .. row.card)
+            table.insert(lines, "TENANT=" .. tostring(row.tenant))
+            table.insert(lines, "TAG=" .. tostring(row.tag))
+            table.insert(lines, "INFO_RAW=" .. tostring(row.info))
+            table.insert(lines, "AMOUNT_RP=" .. (row.amount and string.format("%.0f", row.amount) or "NIL"))
+            table.insert(lines, "PARSE_STATUS=" .. tostring(row.parseStatus))
+            table.insert(lines, "ACCEPT_BUTTON_FOUND=" .. tostring(row.accFound))
+            table.insert(lines, "REJECT_BUTTON_FOUND=" .. tostring(row.rejectFound))
+            table.insert(lines, "")
+        end
+
+        if visibleCards == 0 then
+            table.insert(lines, "STATUS=MENUNGGU KARTU PERMINTAAN SEWA YANG TERLIHAT")
+        end
+
+        local report = table.concat(lines, "\n")
+        local signature = table.concat({
+            tostring(gui ~= nil),
+            tostring(stack ~= nil),
+            tostring(visibleCards),
+            table.concat((function()
+                local values = {}
+                for _, row in ipairs(rows) do
+                    table.insert(values, table.concat({
+                        row.card, row.tenant, row.info,
+                        tostring(row.amount), row.parseStatus,
+                        tostring(row.accFound), tostring(row.rejectFound)
+                    }, "|"))
+                end
+                return values
+            end)(), "\n")
+        }, "|")
+
+        -- Salin hanya ketika isi diagnosis berubah agar clipboard tidak terus
+        -- ditimpa setiap setengah detik.
+        if signature ~= lastSignature then
+            lastSignature = signature
+            lastReport = report
+            pcall(function()
+                if typeof(setclipboard) == "function" then
+                    setclipboard(report)
+                end
+            end)
+            pcall(function() warn(report) end)
+            pcall(function()
+                getgenv().ONYX_AUTOACC_DIAG = report
+            end)
+        end
+    end
+end)

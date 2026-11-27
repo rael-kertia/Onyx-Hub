@@ -11,6 +11,7 @@ local wrapperPatchAt = response:find(wrapperPatchMarker, 1, true)
 assert(wrapperPatchAt, "ONYX AUTO ACC: titik integrasi core tidak ditemukan")
 
 local wrapperPatch = [==[
+patch = patch .. [====[
 
 -- AUTO ACC: sisipkan ke source GUI pada anchor yang benar.
 -- Core asli tidak memiliki blok Auto ACC lama untuk diganti.
@@ -297,6 +298,7 @@ if not autoAccAlreadyInjected then
         .. autoAccInsert .. "\n"
         .. source:sub(autoAccInsertAt)
 end
+]====]
 ]====]
 ]==]
 

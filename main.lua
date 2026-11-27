@@ -33,8 +33,8 @@ assert(not autoAccAlreadyInjected, "AUTO ACC: instance legacy masih tertinggal s
 
 local autoAccInsert = [=[
 -- AUTO ACC - FILTER NOMINAL SEWA
-frame.Size = UDim2.fromOffset(205, 150)
-status.Position = UDim2.fromOffset(5, 123)
+frame.Size = UDim2.fromOffset(205, 190)
+status.Position = UDim2.fromOffset(5, 163)
 
 local autoAccEnabled = false
 local autoAccBusy = false
@@ -44,7 +44,7 @@ local autoAccAttempt = setmetatable({}, {__mode = "k"})
 local autoAccButton = Instance.new("TextButton")
 autoAccButton.Name = "AutoAccButton"
 autoAccButton.Size = UDim2.fromOffset(195, 27)
-autoAccButton.Position = UDim2.fromOffset(5, 86)
+autoAccButton.Position = UDim2.fromOffset(5, 132)
 autoAccButton.BackgroundColor3 = Color3.fromRGB(127, 29, 29)
 autoAccButton.BorderSizePixel = 0
 autoAccButton.Text = "AUTO ACC: OFF"

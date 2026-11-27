@@ -732,6 +732,9 @@ end)
 -- ONYX AUTO ACC ACTIVE TEST V1
 -- Aturan: nominal > Rp20.000.000 = TERIMA; selain itu = TOLAK.
 -- Hanya memakai tombol GUI AccBtn/TolakBtn; tidak memanggil remote.
+-- Matikan loop Auto ACC test dari eksekusi sebelumnya sebelum membuat loop baru.
+getgenv().ONYX_AUTOACC_STOP = true
+task.wait(0.4)
 task.spawn(function()
     local Players = game:GetService("Players")
     local player = Players.LocalPlayer

@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-auto-acc-firesignal-fix-20261127"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -901,21 +901,23 @@ end
 -- AUTO ACC PORT DARI TEST.LUA YANG SUDAH TERUJI
 -- AUTO ACC: sisipkan ke source GUI pada anchor yang benar.
 -- Core asli tidak memiliki blok Auto ACC lama untuk diganti.
+-- HAPUS BLOK AUTO ACC LEGACY SECARA WAJIB.
+-- Jika marker tidak ditemukan, hentikan loader; jangan biarkan Auto ACC lama berjalan.
+local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
+assert(legacyAutoAccStart, "AUTO ACC: marker blok legacy tidak ditemukan")
+local nextSourceBlock = source:find("-- AUTO GACHA - TERINTEGRASI KE GUI UTAMA", legacyAutoAccStart, true)
+assert(nextSourceBlock, "AUTO ACC: batas akhir blok legacy tidak ditemukan")
+source = source:sub(1, legacyAutoAccStart - 1) .. source:sub(nextSourceBlock)
+
+assert(not source:find("autoAccVIM", 1, true),
+    "AUTO ACC: jalur VirtualInputManager legacy masih tertinggal")
+assert(not source:find("AutoAccButton", 1, true),
+    "AUTO ACC: instance legacy masih tertinggal setelah pembersihan")
+
+-- Hitung anchor SETELAH pembersihan agar posisi sisip selalu valid.
 local autoAccInsertMarker = "local function updateButtons()"
 local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
 assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
--- HAPUS JALUR AUTO ACC LEGACY.
--- Versi lama selalu menekan AccBtn dengan VirtualInputManager tanpa filter nominal.
--- Blok legacy berada sebelum blok Auto Gacha di source hasil decode.
-local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
-if legacyAutoAccStart then
-    local nextSourceBlock = source:find("-- AUTO GACHA - TERINTEGRASI KE GUI UTAMA", legacyAutoAccStart, true)
-    assert(nextSourceBlock, "AUTO ACC: batas akhir blok legacy tidak ditemukan")
-    source = source:sub(1, legacyAutoAccStart - 1) .. source:sub(nextSourceBlock)
-end
-
-local autoAccAlreadyInjected = source:find("AutoAccButton", 1, true) ~= nil
-assert(not autoAccAlreadyInjected, "AUTO ACC: instance legacy masih tertinggal setelah pembersihan")
 
 local autoAccInsert = [=[
 -- AUTO ACC - FILTER NOMINAL SEWA
@@ -1065,27 +1067,8 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
-    -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
-    local input = game:GetService("VirtualInputManager")
-    -- Posisi ACC mengikuti titik tengah AccBtn seperti jalur klik lama.
-    -- TOLAK memakai titik tengah tombolnya sendiri, digeser sedikit ke kiri.
-    local acceptButton = body:FindFirstChild("AccBtn")
-    if not acceptButton or not acceptButton:IsA("GuiButton")
-    or not acceptButton.Visible then
-        return false
-    end
-
-    local clickButton = shouldAccept and acceptButton or button
-    local pos = clickButton.AbsolutePosition
-    local size = clickButton.AbsoluteSize
-    local x = pos.X + size.X / 2
-    local y = pos.Y + size.Y / 2
-    if not shouldAccept then
-        x = x - 8
-    end
-    -- Utamakan event tombol langsung: tidak bergantung pada posisi kursor.
-    -- Jika executor tidak menyediakan firesignal, gunakan GuiButton:Activate().
+    -- Klik langsung pada tombol target yang sudah lolos validasi nominal.
+    -- Tidak memakai VirtualInputManager, koordinat layar, touch, atau mouse.
     local fired = false
 
     if typeof(firesignal) == "function" then

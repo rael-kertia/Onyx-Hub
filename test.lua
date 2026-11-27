@@ -127,7 +127,8 @@ local function autoAccGetCards()
 end
 
 local function autoAccClick(item)
-    -- Revalidasi kartu dan nominal tepat sebelum mengirim event.
+    -- Jangan pernah memakai referensi tombol atau nominal dari hasil scan lama.
+    -- Baca ulang isi kartu dan cari tombol langsung dari kartu yang masih aktif.
     local card = item and item.card
     if not card or not card.Parent or not card.Visible then
         return false
@@ -142,6 +143,7 @@ local function autoAccClick(item)
         return false
     end
 
+    -- Parse teks live, bukan cache. Tidak ada nominal = tidak ada aksi.
     local liveText = tostring(info.Text or "")
     local liveAmount = autoAccParseAmount(liveText)
     if not liveAmount or liveAmount ~= item.amount
@@ -151,17 +153,23 @@ local function autoAccClick(item)
 
     local shouldAccept = liveAmount > 20000000
     local expectedName = shouldAccept and "AccBtn" or "TolakBtn"
+    local forbiddenName = shouldAccept and "TolakBtn" or "AccBtn"
+
     local accept = body:FindFirstChild("AccBtn")
     local reject = body:FindFirstChild("TolakBtn")
     local button = shouldAccept and accept or reject
 
-    if not button or button.Name ~= expectedName
+    -- Fail closed: tombol target wajib tepat, tombol lawan wajib berbeda.
+    if not button or button == (shouldAccept and reject or accept)
+    or button.Name ~= expectedName
     or not button:IsA("GuiButton")
-    or button.Parent ~= body or not button.Visible or not button.Active then
+    or not button.Parent or button.Parent ~= body
+    or not button.Visible or not button.Active
+    or (button.Name == forbiddenName) then
         return false
     end
 
-    -- Fail closed: nominal dan tombol wajib tetap cocok pada pemeriksaan akhir.
+    -- Pemeriksaan terakhir tepat sebelum Activate untuk mencegah kartu berubah.
     local finalText = tostring(info.Text or "")
     local finalAmount = autoAccParseAmount(finalText)
     if finalText ~= liveText or finalAmount ~= liveAmount
@@ -169,21 +177,61 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Satu-satunya jalur klik: firesignal pada tombol yang sudah dipilih.
-    if typeof(firesignal) ~= "function" then
+    -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
+    -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
+    local input = game:GetService("VirtualInputManager")
+    -- Posisi ACC mengikuti titik tengah AccBtn seperti jalur klik lama.
+    -- TOLAK memakai titik tengah tombolnya sendiri, digeser sedikit ke kiri.
+    local acceptButton = body:FindFirstChild("AccBtn")
+    if not acceptButton or not acceptButton:IsA("GuiButton")
+    or not acceptButton.Visible then
         return false
     end
 
-    local fired = pcall(function()
-        firesignal(button.Activated)
-    end)
+    local clickButton = shouldAccept and acceptButton or button
+    local pos = clickButton.AbsolutePosition
+    local size = clickButton.AbsoluteSize
+    local x = pos.X + size.X / 2
+    local y = pos.Y + size.Y / 2
+    if not shouldAccept then
+        x = x - 8
+    end
+    -- Utamakan event tombol langsung: tidak bergantung pada posisi kursor.
+    -- Jika executor tidak menyediakan firesignal, gunakan GuiButton:Activate().
+    local fired = false
+
+    if typeof(firesignal) == "function" then
+        local ok = pcall(function()
+            firesignal(button.Activated)
+        end)
+        fired = ok
+    end
+
     if not fired then
-        return false
+        local ok = pcall(function()
+            button:Activate()
+        end)
+        fired = ok
     end
 
-    task.wait(0.65)
+    if fired then
+        task.wait(0.45)
+        if not card.Parent or not card.Visible then
+            return true
+        end
+    end
+
+    -- Fallback event MouseButton1Click untuk GUI yang memakai event lama.
+    if card.Parent and card.Visible and button.Parent and button.Visible then
+        if typeof(firesignal) == "function" then
+            pcall(function()
+                firesignal(button.MouseButton1Click)
+            end)
+            task.wait(0.65)
+        end
+    end
+
     return not card.Parent or not card.Visible
-        or not button.Parent or not button.Visible
 end
 
 task.spawn(function()

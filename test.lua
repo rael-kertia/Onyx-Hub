@@ -177,14 +177,47 @@ local function autoAccClick(item)
         return false
     end
 
-    local ok = pcall(function()
-        button:Activate()
-    end)
-    if not ok then return false end
+    -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
+    -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
+    local input = game:GetService("VirtualInputManager")
+    local pos = button.AbsolutePosition
+    local size = button.AbsoluteSize
+    local x = pos.X + size.X / 2
+    local y = pos.Y + size.Y / 2
+    local point = Vector2.new(x, y)
 
-    task.wait(0.8)
+    local touchOK = pcall(function()
+        input:SendTouchEvent(0, Enum.UserInputState.Begin, point)
+        task.wait(0.10)
+        input:SendTouchEvent(0, Enum.UserInputState.End, point)
+    end)
+
+    task.wait(0.45)
+    if not card.Parent or not card.Visible then
+        return true
+    end
+
+    -- Jika sentuh tidak memproses kartu, coba klik mouse pada koordinat
+    -- tombol yang SAMA. Validasi nominal dan nama tombol sekali lagi dahulu.
+    local retryText = tostring(info.Text or "")
+    local retryAmount = autoAccParseAmount(retryText)
+    if retryText ~= finalText or retryAmount ~= finalAmount
+    or not button.Parent or button.Name ~= expectedName
+    or not button.Visible or not button.Active then
+        return false
+    end
+
+    local mouseOK = pcall(function()
+        input:SendMouseMoveEvent(x, y, game)
+        task.wait(0.05)
+        input:SendMouseButtonEvent(x, y, 0, true, game, 1)
+        task.wait(0.08)
+        input:SendMouseButtonEvent(x, y, 0, false, game, 1)
+    end)
+
+    if not touchOK and not mouseOK then return false end
+    task.wait(0.65)
     return not card.Parent or not card.Visible
-        or not button.Parent or not button.Visible
 end
 
 task.spawn(function()

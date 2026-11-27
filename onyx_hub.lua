@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-autoacc-20261127-v1"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -546,6 +546,27 @@ connect(jamButton.Activated, function()
 end)
 
 paintJamButton()
+
+
+-- AUTO ACC CORE INTEGRITY: fail closed bila implementasi hilang/duplikat.
+local function onyxCountAutoAccMarker(text, marker)
+    local count, at = 0, 1
+    while true do
+        local found = text:find(marker, at, true)
+        if not found then break end
+        count = count + 1
+        at = found + #marker
+    end
+    return count
+end
+assert(onyxCountAutoAccMarker(source, "-- AUTO ACC - FILTER NOMINAL SEWA") == 1,
+    "AUTO ACC: blok inti tidak ditemukan atau duplikat")
+assert(onyxCountAutoAccMarker(source, "local function autoAccGetCards()") == 1,
+    "AUTO ACC: scanner kartu tidak valid")
+assert(onyxCountAutoAccMarker(source, "local function autoAccClick(item)") == 1,
+    "AUTO ACC: validasi klik tidak valid")
+assert(onyxCountAutoAccMarker(source, "local function autoAccParseAmount(value)") == 1,
+    "AUTO ACC: parser nominal tidak valid")
 
 ]====]
 

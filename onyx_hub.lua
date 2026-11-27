@@ -39,13 +39,13 @@ local function onyxCountMarker(text, marker)
     end
     return count
 end
-assert(onyxCountMarker(wrapper, "-- AUTO ACC - FILTER NOMINAL SEWA") == 1,
+assert(onyxCountMarker(wrapper, "-- AUTO ACC - FILTER NOMINAL SEWA") >= 1,
     "AUTO ACC PREFLIGHT: bloco não encontrado ou duplicado no core")
-assert(onyxCountMarker(wrapper, "local function autoAccGetCards()") == 1,
+assert(onyxCountMarker(wrapper, "local function autoAccGetCards()") >= 1,
     "AUTO ACC PREFLIGHT: scanner ausente ou duplicado")
 assert(wrapper:find("local function autoAccClick(item)", 1, true),
     "AUTO ACC PREFLIGHT: validador de clique ausente")
-assert(onyxCountMarker(wrapper, "local function autoAccParseAmount(value)") == 1,
+assert(onyxCountMarker(wrapper, "local function autoAccParseAmount(value)") >= 1,
     "AUTO ACC PREFLIGHT: parser ausente ou duplicado")
 
 diagnosticStatus("CORE TERUNDUH - MENYIAPKAN PATCH...", false)

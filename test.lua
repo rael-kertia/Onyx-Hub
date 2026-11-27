@@ -110,24 +110,25 @@ end
 local function autoAccClick(item)
     local button, x, y = item.button, item.x, item.y
     local pos = Vector2.new(x, y)
-    local clicked = false
+
     pcall(function()
         autoAccVIM:SendTouchEvent(0, Enum.UserInputState.Begin, pos)
-        task.wait(0.08)
+        task.wait(0.10)
         autoAccVIM:SendTouchEvent(0, Enum.UserInputState.End, pos)
-        clicked = true
     end)
-    task.wait(0.35)
+    task.wait(0.55)
+
     if button.Parent and button.Visible then
         pcall(function()
             autoAccVIM:SendMouseMoveEvent(x, y, game)
             autoAccVIM:SendMouseButtonEvent(x, y, 0, true, game, 1)
-            task.wait(0.08)
+            task.wait(0.10)
             autoAccVIM:SendMouseButtonEvent(x, y, 0, false, game, 1)
-            clicked = true
         end)
+        task.wait(0.75)
     end
-    return clicked
+
+    return not (button.Parent and button.Visible)
 end
 
 task.spawn(function()
@@ -151,12 +152,16 @@ task.spawn(function()
                         end
                     end
                     if valid then
-                        autoAccClick(valid)
-                        autoAccLast[item.card] = fingerprint
-                        setStatus("AUTO ACC: " .. valid.decision .. " | Rp " .. string.format("%.0f", valid.amount))
+                        local success = autoAccClick(valid)
+                        if success then
+                            autoAccLast[item.card] = fingerprint
+                            setStatus("AUTO ACC: " .. valid.decision .. " | Rp " .. string.format("%.0f", valid.amount))
+                        else
+                            setStatus("AUTO ACC: KLIK BELUM TERKONFIRMASI - COBA ULANG")
+                        end
                     end
                     autoAccBusy = false
-                    task.wait(0.7)
+                    task.wait(1)
                 end
             end
         end

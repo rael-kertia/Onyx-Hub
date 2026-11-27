@@ -180,10 +180,22 @@ local function autoAccClick(item)
     -- Kirim input sentuh ke TOMBOL YANG SUDAH DIPILIH.
     -- Hindari metode Activate yang bukan bagian dari API GuiButton terdokumentasi.
     local input = game:GetService("VirtualInputManager")
-    local pos = button.AbsolutePosition
-    local size = button.AbsoluteSize
+    -- Posisi ACC mengikuti titik tengah AccBtn seperti jalur klik lama.
+    -- TOLAK memakai titik tengah tombolnya sendiri, digeser sedikit ke kiri.
+    local acceptButton = body:FindFirstChild("AccBtn")
+    if not acceptButton or not acceptButton:IsA("GuiButton")
+    or not acceptButton.Visible then
+        return false
+    end
+
+    local clickButton = shouldAccept and acceptButton or button
+    local pos = clickButton.AbsolutePosition
+    local size = clickButton.AbsoluteSize
     local x = pos.X + size.X / 2
     local y = pos.Y + size.Y / 2
+    if not shouldAccept then
+        x = x - 8
+    end
     local point = Vector2.new(x, y)
 
     local touchOK = pcall(function()
@@ -224,17 +236,21 @@ task.spawn(function()
     while alive() and gui.Parent do
         if autoAccEnabled and not autoAccBusy then
             local cards = autoAccGetCards()
+            local processed = false
+
+            -- Tidak mensyaratkan jumlah kartu minimum. Satu kartu maupun
+            -- dua kartu diproses dengan scan ulang setelah setiap aksi.
             for _, item in ipairs(cards) do
                 local fingerprint = item.info .. "|" .. tostring(item.amount)
                     .. "|" .. item.decision
                 local now = os.clock()
+
                 if autoAccDone[item.card] ~= fingerprint
                 and (not autoAccAttempt[item.card]
                     or now - autoAccAttempt[item.card] >= 3) then
                     autoAccBusy = true
                     autoAccAttempt[item.card] = now
 
-                    -- Verifikasi ulang kartu dan nominal tepat sebelum klik.
                     local valid
                     for _, current in ipairs(autoAccGetCards()) do
                         if current.card == item.card
@@ -258,12 +274,17 @@ task.spawn(function()
                     end
 
                     autoAccBusy = false
-                    task.wait(0.5)
+                    processed = true
                     break
                 end
             end
+
+            if processed then
+                -- Beri UI waktu menyusun ulang kartu, lalu scan ulang dari awal.
+                task.wait(0.35)
+            end
         end
-        task.wait(0.2)
+        task.wait(0.15)
     end
 end)
 ]=]

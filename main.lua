@@ -2,7 +2,7 @@
 -- Auto ACC diambil persis dari test.lua commit 441cb62.
 -- Fitur lain di main.lua dipertahankan.
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-autoacc-20261128-v15"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/onyx_hub.lua?v=onyx-autoacc-20261128-v16"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 10000, "ONYX HUB: core gagal diunduh")
 

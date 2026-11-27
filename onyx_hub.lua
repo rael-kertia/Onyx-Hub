@@ -12,7 +12,7 @@ local diagnosticGui = nil
 local function bootOnyxHub()
 diagnosticStatus("MENGAMBIL CORE...", false)
 
-local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-farm-visible-fix13-20261125"
+local url = "https://raw.githubusercontent.com/rael-kertia/Onyx-Hub/main/main_obfuscated.lua?v=onyx-fix14-recompile-20261125"
 local response = game:HttpGet(url)
 assert(type(response) == "string" and #response > 1000, "Gagal mengambil core ONYX HUB")
 
@@ -130,7 +130,7 @@ local function onyxReplaceBetween(text, firstMarker, nextMarker, replacement)
     assert(a, "ONYX GACHA PATCH: marker awal tidak ditemukan: " .. firstMarker)
     local b = text:find(nextMarker, a + #firstMarker, true)
     assert(b, "ONYX GACHA PATCH: marker akhir tidak ditemukan: " .. nextMarker)
-    return text:sub(1, a - 1) .. replacement .. "\\n\\n" .. text:sub(b)
+    return text:sub(1, a - 1) .. replacement .. "\n\n" .. text:sub(b)
 end
 
 local onyxGachaNative = [=[

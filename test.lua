@@ -196,20 +196,41 @@ local function autoAccClick(item)
     if not shouldAccept then
         x = x - 8
     end
-    -- API Roblox menerima touchId, state, X, Y sebagai EMPAT argumen.
-    -- Argumen Vector2 sebelumnya salah sehingga sentuhan gagal dikirim.
-    local touchOK = pcall(function()
-        input:SendTouchEvent(0, Enum.UserInputState.Begin, x, y)
-        task.wait(0.10)
-        input:SendTouchEvent(0, Enum.UserInputState.End, x, y)
-        input:WaitForInputEventsProcessed()
-    end)
+    -- Utamakan event tombol langsung: tidak bergantung pada posisi kursor.
+    -- Jika executor tidak menyediakan firesignal, gunakan GuiButton:Activate().
+    local fired = false
 
-    if not touchOK then
-        return false
+    if typeof(firesignal) == "function" then
+        local ok = pcall(function()
+            firesignal(button.Activated)
+        end)
+        fired = ok
     end
 
-    task.wait(0.65)
+    if not fired then
+        local ok = pcall(function()
+            button:Activate()
+        end)
+        fired = ok
+    end
+
+    if fired then
+        task.wait(0.45)
+        if not card.Parent or not card.Visible then
+            return true
+        end
+    end
+
+    -- Fallback event MouseButton1Click untuk GUI yang memakai event lama.
+    if card.Parent and card.Visible and button.Parent and button.Visible then
+        if typeof(firesignal) == "function" then
+            pcall(function()
+                firesignal(button.MouseButton1Click)
+            end)
+            task.wait(0.65)
+        end
+    end
+
     return not card.Parent or not card.Visible
 end
 

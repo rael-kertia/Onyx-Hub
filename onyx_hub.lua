@@ -548,6 +548,9 @@ end)
 paintJamButton()
 
 
+
+]====]
+
 -- AUTO ACC CORE INTEGRITY: fail closed bila implementasi hilang/duplikat.
 local function onyxCountAutoAccMarker(text, marker)
     local count, at = 0, 1
@@ -568,7 +571,7 @@ assert(onyxCountAutoAccMarker(source, "local function autoAccClick(item)") == 1,
 assert(onyxCountAutoAccMarker(source, "local function autoAccParseAmount(value)") == 1,
     "AUTO ACC: parser nominal tidak valid")
 
-]====]
+
 
 -- No second exit button: keep the single core header close control.
 

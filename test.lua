@@ -114,37 +114,64 @@ local function autoAccGetCards()
 end
 
 local function autoAccClick(item)
-    local button = item and item.button
-    local expectedName = item and item.decision == "TERIMA" and "AccBtn" or "TolakBtn"
+    -- Jangan pernah memakai referensi tombol atau nominal dari hasil scan lama.
+    -- Baca ulang isi kartu dan cari tombol langsung dari kartu yang masih aktif.
+    local card = item and item.card
+    if not card or not card.Parent or not card.Visible then
+        return false
+    end
 
-    -- Fail closed: tombol harus cocok dengan keputusan dan nominal harus
-    -- dihitung ulang tepat sebelum aksi.
-    if not button or not button.Parent
-    or not button:IsA("GuiButton")
+    local body = card:FindFirstChild("Isi")
+    local tag = body and body:FindFirstChild("Tag")
+    local tagLabel = tag and tag:FindFirstChild("Label")
+    local info = body and body:FindFirstChild("Info")
+    if not body or not tagLabel or not info
+    or not tostring(tagLabel.Text):upper():find("PERMINTAAN SEWA", 1, true) then
+        return false
+    end
+
+    -- Parse teks live, bukan cache. Tidak ada nominal = tidak ada aksi.
+    local liveText = tostring(info.Text or "")
+    local liveAmount = autoAccParseAmount(liveText)
+    if not liveAmount or liveAmount ~= item.amount
+    or liveText ~= item.info then
+        return false
+    end
+
+    local shouldAccept = liveAmount > 20000000
+    local expectedName = shouldAccept and "AccBtn" or "TolakBtn"
+    local forbiddenName = shouldAccept and "TolakBtn" or "AccBtn"
+
+    local accept = body:FindFirstChild("AccBtn")
+    local reject = body:FindFirstChild("TolakBtn")
+    local button = shouldAccept and accept or reject
+
+    -- Fail closed: tombol target wajib tepat, tombol lawan wajib berbeda.
+    if not button or button == (shouldAccept and reject or accept)
     or button.Name ~= expectedName
-    or not button.Visible or not button.Active then
+    or not button:IsA("GuiButton")
+    or not button.Parent or button.Parent ~= body
+    or not button.Visible or not button.Active
+    or (button.Name == forbiddenName) then
         return false
     end
 
-    local verifiedAmount = autoAccParseAmount(item.info)
-    if not verifiedAmount or verifiedAmount ~= item.amount then
+    -- Pemeriksaan terakhir tepat sebelum Activate untuk mencegah kartu berubah.
+    local finalText = tostring(info.Text or "")
+    local finalAmount = autoAccParseAmount(finalText)
+    if finalText ~= liveText or finalAmount ~= liveAmount
+    or ((finalAmount > 20000000) ~= (button.Name == "AccBtn")) then
         return false
     end
 
-    local shouldAccept = verifiedAmount > 20000000
-    if (item.decision == "TERIMA") ~= shouldAccept then
-        return false
-    end
-
-    -- Activate langsung pada instance tombol yang sudah diverifikasi;
-    -- tidak memakai koordinat layar/touch yang berisiko mengenai tombol lain.
     local ok = pcall(function()
         button:Activate()
     end)
     if not ok then return false end
 
     task.wait(0.8)
-    return not button.Parent or not button.Visible or not item.card.Parent
+    return not card.Parent or not card.Visible
+        or not button.Parent or not button.Visible
 end
 
 task.spawn(function()

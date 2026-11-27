@@ -1,51 +1,56 @@
--- ONYX AUTO ACC DIAGNOSTIC (READ ONLY)
+-- ONYX AUTO ACC DIAG V3 | READ ONLY
 local pg = game:GetService("Players").LocalPlayer:WaitForChild("PlayerGui")
 local out = {}
-local function add(s) out[#out+1] = tostring(s) end
-
-local function inspect(value)
-    local raw = tostring(value or "")
-    -- Extract the final numeric group, which is the displayed rental price.
-    local cleaned = raw:gsub("%s+$", "")
-    local token = cleaned:match("([%d][%d%.,]*)$")
-    local digits = token and token:gsub("[^%d]", "") or ""
-    local number = digits ~= "" and tonumber(digits) or nil
-
-    -- Show exact bytes around the visible Rp marker to expose hidden characters.
-    local lower = raw:lower()
-    local pos = lower:find("r", 1, true)
-    local bytes = {}
-    if pos then
-        for i = pos, math.min(#raw, pos + 15) do
-            bytes[#bytes+1] = string.byte(raw, i)
-        end
-    end
-    return number, raw, token, table.concat(bytes, ",")
+local function add(v) out[#out+1] = tostring(v) end
+local function digits(s)
+    return (tostring(s or ""):gsub("%D", ""))
+end
+local function parse(s)
+    s = tostring(s or "")
+    local lower = s:lower()
+    local p = lower:find("rp", 1, true)
+    local tail = p and s:sub(p + 2) or s
+    local d = digits(tail)
+    if d == "" then return nil, tail, d end
+    return tonumber(d), tail, d
 end
 
-for _,ui in ipairs(pg:GetDescendants()) do
+add("ONYX AUTO ACC DIAG V3")
+add("MODE=READ_ONLY")
+local found = 0
+for _, ui in ipairs(pg:GetDescendants()) do
     if ui.Name == "PermintaanSewaUI" then
         local stack = ui:FindFirstChild("Tumpukan", true)
         if stack then
-            for _,card in ipairs(stack:GetDescendants()) do
+            for _, card in ipairs(stack:GetDescendants()) do
                 if card.Name:match("^Kartu_%d+$") then
                     local body = card:FindFirstChild("Isi")
-                    local info = body and body:FindFirstChild("Info")
-                    local a, raw, token, bytes = inspect(info and info.Text)
-                    local acc = body and body:FindFirstChild("AccBtn")
-                    local tol = body and body:FindFirstChild("TolakBtn")
-                    add(card.Name.." | "..raw)
-                    add("RawQuoted="..string.format("%q", raw))
-                    add("PriceToken="..tostring(token).." | Nominal="..tostring(a))
-                    add("BytesAroundR="..bytes)
-                    add("Seharusnya="..(a and (a>20000000 and "ACC" or "TOLAK") or "SKIP"))
-                    add("AccBtn="..tostring(acc~=nil).." | TolakBtn="..tostring(tol~=nil))
+                    local info = body and body:FindFirstChild("Info", true)
+                    local value = info and info.Text
+                    local amount, tail, digitText = parse(value)
+                    local acc = body and body:FindFirstChild("AccBtn", true)
+                    local tol = body and body:FindFirstChild("TolakBtn", true)
+                    found += 1
+                    add("")
+                    add(card.Name .. " | InfoClass=" .. tostring(info and info.ClassName))
+                    add("RAW=" .. string.format("%q", value))
+                    add("RAW_LEN=" .. tostring(value and #value))
+                    add("AFTER_RP=" .. string.format("%q", tail))
+                    add("DIGITS=" .. digitText .. " | AMOUNT=" .. tostring(amount))
+                    add("DECISION=" .. (amount and (amount > 20000000 and "ACC" or "TOLAK") or "SKIP"))
+                    add("ACC_EXISTS=" .. tostring(acc ~= nil) .. " | TOLAK_EXISTS=" .. tostring(tol ~= nil))
                 end
             end
         end
     end
 end
-if #out==0 then add("UI/kartu permintaan sewa tidak ditemukan.") end
-local report="ONYX AUTO ACC DIAGNOSIS\n"..table.concat(out,"\n")
-if typeof(setclipboard)=="function" then pcall(setclipboard,report) end
+add("")
+add("CARD_COUNT=" .. found)
+if found == 0 then add("Tidak ada kartu ditemukan pada PermintaanSewaUI/Tumpukan.") end
+local report = table.concat(out, "\n")
+if typeof(setclipboard) == "function" then
+    local ok = pcall(setclipboard, report)
+    add("CLIPBOARD=" .. tostring(ok))
+    report = table.concat(out, "\n")
+end
 warn(report)

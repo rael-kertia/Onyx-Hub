@@ -189,7 +189,7 @@ end)
 ]=]
 
 source = source:sub(1, autoAccInsertAt - 1)
-    .. autoAccInsert .. "\\n"
+    .. autoAccInsert .. "\n"
     .. source:sub(autoAccInsertAt)
 
 -- HOMEWORK PATHFINDING: hanya untuk prompt Bersihkan.

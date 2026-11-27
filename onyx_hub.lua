@@ -911,7 +911,7 @@ local autoAccInsertMarker = "local function updateButtons()"
 local autoAccInsertAt = source:find(autoAccInsertMarker, 1, true)
 assert(autoAccInsertAt, "AUTO ACC: anchor GUI updateButtons tidak ditemukan")
 -- HAPUS JALUR AUTO ACC LEGACY.
--- Versi lama selalu menekan AccBtn dengan VirtualInputManager tanpa filter nominal.
+-- Jalur legacy dihapus agar hanya ada satu pengendali Auto ACC.
 -- Blok legacy berada sebelum blok Auto Gacha di source hasil decode.
 local legacyAutoAccStart = source:find("-- AUTO ACC - TERINTEGRASI KE RAEL'S TRICKS", 1, true)
 if legacyAutoAccStart then
@@ -1063,7 +1063,7 @@ local function autoAccClick(item)
         return false
     end
 
-    -- Pemeriksaan terakhir tepat sebelum Activate untuk mencegah kartu berubah.
+    -- Pemeriksaan terakhir sebelum event dikirim untuk mencegah kartu berubah.
     local finalText = tostring(info.Text or "")
     local finalAmount = autoAccParseAmount(finalText)
     if finalText ~= liveText or finalAmount ~= liveAmount
@@ -1072,7 +1072,7 @@ local function autoAccClick(item)
     end
 
     -- Metode klik tunggal sesuai ketentuan: firesignal pada Activated.
-    -- Tidak ada VirtualInputManager, Activate(), atau MouseButton1Click.
+    -- Tidak memakai input simulasi atau event alternatif.
     if typeof(firesignal) ~= "function" then
         return false
     end
